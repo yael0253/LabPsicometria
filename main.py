@@ -4,4 +4,4 @@ import pandas as pd
 df = pd.read_excel("ep_20230606_1_opcion.xlsx")
 
 # Mostrar primeras filas
-print(df.head())
+print(df.head(20))
