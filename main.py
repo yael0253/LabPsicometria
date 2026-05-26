@@ -7,51 +7,40 @@ from tkinter import filedialog, messagebox
 class AnalizadorPsicometria:
 
     def __init__(self, root):
-
         self.root = root
         self.root.title("Analizador de Exámenes - Psicometría")
-        self.root.geometry("750x500")
+        self.root.geometry("800x520")
 
-        self.archivo_excel = None
+        self.archivos_excel = []
 
-        self.df = None
         self.respuestas_correctas = None
-        self.datos_alumnos = None
         self.respuestas_alumnos = None
         self.cuentas = None
 
         self.crear_interfaz()
 
-    # =========================================================
-    # INTERFAZ
-    # =========================================================
-
     def crear_interfaz(self):
-
         titulo = tk.Label(
             self.root,
             text="Analizador de Exámenes - Psicometría",
             font=("Arial", 18, "bold")
         )
-
         titulo.pack(pady=15)
 
         btn_cargar = tk.Button(
             self.root,
-            text="Seleccionar archivo Excel",
+            text="Seleccionar archivo(s) Excel",
             font=("Arial", 12),
-            command=self.seleccionar_archivo
+            command=self.seleccionar_archivos
         )
-
         btn_cargar.pack(pady=8)
 
         btn_procesar = tk.Button(
             self.root,
-            text="Leer y separar datos",
+            text="Leer, separar y unir datos",
             font=("Arial", 12),
             command=self.leer_y_separar_datos
         )
-
         btn_procesar.pack(pady=8)
 
         btn_generar = tk.Button(
@@ -60,356 +49,226 @@ class AnalizadorPsicometria:
             font=("Arial", 12),
             command=self.generar_archivos_control_y_dat
         )
-
         btn_generar.pack(pady=8)
 
-        self.texto_resultado = tk.Text(
-            self.root,
-            width=90,
-            height=20
-        )
-
+        self.texto_resultado = tk.Text(self.root, width=95, height=20)
         self.texto_resultado.pack(pady=15)
 
-    # =========================================================
-    # SELECCIONAR ARCHIVO
-    # =========================================================
-
-    def seleccionar_archivo(self):
-
-        self.archivo_excel = filedialog.askopenfilename(
-            title="Seleccionar archivo Excel",
+    def seleccionar_archivos(self):
+        self.archivos_excel = filedialog.askopenfilenames(
+            title="Seleccionar archivo(s) Excel",
             filetypes=[("Archivos Excel", "*.xlsx *.xls")]
         )
 
-        if self.archivo_excel:
+        if self.archivos_excel:
+            archivos = "\n".join([
+                os.path.basename(archivo)
+                for archivo in self.archivos_excel
+            ])
 
             messagebox.showinfo(
-                "Archivo seleccionado",
-                self.archivo_excel
+                "Archivos seleccionados",
+                f"Se seleccionaron {len(self.archivos_excel)} archivo(s):\n\n{archivos}"
             )
 
-    # =========================================================
-    # LEER Y SEPARAR DATOS
-    # =========================================================
+    def limpiar_texto(self, serie_o_df):
+        return (
+            serie_o_df
+            .fillna("0")
+            .astype(str)
+            .apply(lambda col: col.str.strip().str.upper().replace("", "0"))
+            if isinstance(serie_o_df, pd.DataFrame)
+            else serie_o_df.fillna("0").astype(str).str.strip().str.upper().replace("", "0")
+        )
+
+    def leer_archivo_individual(self, archivo):
+        hoja = "calificaciones_opcion"
+
+        fila_items = 7
+        fila_respuestas_correctas = 8
+        fila_inicio_alumnos = 9
+
+        col_cuenta = 2
+        col_inicio_preguntas = 12
+
+        df = pd.read_excel(
+            archivo,
+            sheet_name=hoja,
+            header=None,
+            engine="openpyxl"
+        )
+
+        columnas_preguntas = []
+
+        for col in range(col_inicio_preguntas, df.shape[1]):
+            valor_item = df.iloc[fila_items, col]
+
+            if pd.notna(valor_item) and str(valor_item).strip().isdigit():
+                columnas_preguntas.append(col)
+            else:
+                break
+
+        if len(columnas_preguntas) == 0:
+            raise ValueError(
+                f"No se detectaron preguntas en el archivo: {os.path.basename(archivo)}"
+            )
+
+        respuestas_correctas = df.iloc[
+            fila_respuestas_correctas,
+            columnas_preguntas
+        ]
+
+        datos_alumnos = df.iloc[fila_inicio_alumnos:].copy()
+        datos_alumnos = datos_alumnos.dropna(how="all")
+
+        cuentas = datos_alumnos.iloc[:, col_cuenta]
+
+        respuestas_alumnos = datos_alumnos.iloc[
+            :,
+            columnas_preguntas
+        ]
+
+        cuentas = cuentas.fillna("0").astype(str).str.strip()
+
+        respuestas_correctas = self.limpiar_texto(
+            respuestas_correctas
+        ).reset_index(drop=True)
+
+        respuestas_alumnos = self.limpiar_texto(
+            respuestas_alumnos
+        ).reset_index(drop=True)
+
+        respuestas_alumnos.insert(
+            0,
+            "CUENTA",
+            cuentas.reset_index(drop=True)
+        )
+
+        return respuestas_correctas, respuestas_alumnos
 
     def leer_y_separar_datos(self):
-
-        if not self.archivo_excel:
-
+        if not self.archivos_excel:
             messagebox.showwarning(
                 "Aviso",
-                "Primero selecciona un archivo Excel."
+                "Primero selecciona uno o más archivos Excel."
             )
-
             return
 
         try:
+            lista_correctas = []
+            lista_alumnos = []
+            resumen_archivos = []
 
-            hoja = "calificaciones_opcion"
+            for archivo in self.archivos_excel:
+                correctas, alumnos = self.leer_archivo_individual(archivo)
 
-            # =================================================
-            # CONFIGURACIÓN DEL EXCEL
-            # =================================================
+                lista_correctas.append(correctas)
+                lista_alumnos.append(alumnos)
 
-            fila_items = 7                  # fila 8 Excel
-            fila_respuestas_correctas = 8  # fila 9 Excel
-            fila_inicio_alumnos = 9        # fila 10 Excel
-
-            col_cuenta = 2                 # columna C
-            col_inicio_preguntas = 12      # columna M
-
-            # =================================================
-            # LEER EXCEL
-            # =================================================
-
-            self.df = pd.read_excel(
-                self.archivo_excel,
-                sheet_name=hoja,
-                header=None,
-                engine="openpyxl"
-            )
-
-            # =================================================
-            # DETECTAR COLUMNAS DE PREGUNTAS
-            # =================================================
-
-            columnas_preguntas = []
-
-            for col in range(col_inicio_preguntas, self.df.shape[1]):
-
-                valor_item = self.df.iloc[fila_items, col]
-
-                if (
-                    pd.notna(valor_item)
-                    and str(valor_item).strip().isdigit()
-                ):
-
-                    columnas_preguntas.append(col)
-
-                else:
-                    break
-
-            total_preguntas = len(columnas_preguntas)
-
-            if total_preguntas == 0:
-
-                messagebox.showerror(
-                    "Error",
-                    "No se detectaron preguntas."
+                resumen_archivos.append(
+                    f"{os.path.basename(archivo)}: {len(correctas)} preguntas"
                 )
 
-                return
-
-            # =================================================
-            # RESPUESTAS CORRECTAS
-            # =================================================
-
-            self.respuestas_correctas = self.df.iloc[
-                fila_respuestas_correctas,
-                columnas_preguntas
-            ]
-
-            # =================================================
-            # DATOS DE ALUMNOS
-            # =================================================
-
-            self.datos_alumnos = self.df.iloc[
-                fila_inicio_alumnos:
-            ].copy()
-
-            self.datos_alumnos = self.datos_alumnos.dropna(how="all")
-
-            # =================================================
-            # CUENTAS
-            # =================================================
-
-            self.cuentas = self.datos_alumnos.iloc[:, col_cuenta]
-
-            self.cuentas = (
-                self.cuentas
-                .fillna("0")
-                .astype(str)
-                .str.strip()
+            self.respuestas_correctas = pd.concat(
+                lista_correctas,
+                ignore_index=True
             )
 
-            # =================================================
-            # RESPUESTAS ALUMNOS
-            # =================================================
+            data_final = lista_alumnos[0]
 
-            self.respuestas_alumnos = self.datos_alumnos.iloc[
-                :,
-                columnas_preguntas
-            ]
-
-            # =================================================
-            # LIMPIEZA RESPUESTAS CORRECTAS
-            # =================================================
-
-            self.respuestas_correctas = (
-                self.respuestas_correctas
-                .fillna("0")
-                .astype(str)
-                .str.strip()
-                .str.upper()
-                .replace("", "0")
-            )
-
-            # =================================================
-            # LIMPIEZA RESPUESTAS ALUMNOS
-            # =================================================
-
-            self.respuestas_alumnos = (
-                self.respuestas_alumnos
-                .fillna("0")
-                .astype(str)
-                .apply(
-                    lambda col:
-                    col.str.strip()
-                    .str.upper()
-                    .replace("", "0")
+            for siguiente in lista_alumnos[1:]:
+                data_final = pd.merge(
+                    data_final,
+                    siguiente,
+                    on="CUENTA",
+                    how="outer"
                 )
+
+            data_final = data_final.fillna("0")
+
+            self.cuentas = data_final["CUENTA"]
+
+            self.respuestas_alumnos = data_final.drop(
+                columns=["CUENTA"]
             )
 
-            total_alumnos = len(self.datos_alumnos)
+            self.respuestas_alumnos.columns = [
+                f"Item{str(i + 1).zfill(2)}"
+                for i in range(len(self.respuestas_alumnos.columns))
+            ]
+
+            total_alumnos = len(self.cuentas)
+            total_preguntas = len(self.respuestas_correctas)
 
             self.mostrar_resumen(
                 total_alumnos,
-                total_preguntas
+                total_preguntas,
+                resumen_archivos
             )
 
         except Exception as e:
-
             messagebox.showerror(
                 "Error",
-                f"Ocurrió un error:\n\n{e}"
+                f"Ocurrió un error al unir los archivos:\n\n{e}"
             )
 
-    # =========================================================
-    # MOSTRAR RESUMEN
-    # =========================================================
-
-    def mostrar_resumen(
-        self,
-        total_alumnos,
-        total_preguntas
-    ):
-
+    def mostrar_resumen(self, total_alumnos, total_preguntas, resumen_archivos):
         self.texto_resultado.delete("1.0", tk.END)
 
         self.texto_resultado.insert(
             tk.END,
             "LECTURA REALIZADA CORRECTAMENTE\n"
         )
+        self.texto_resultado.insert(tk.END, "-" * 65 + "\n\n")
 
-        self.texto_resultado.insert(
-            tk.END,
-            "-" * 60 + "\n\n"
-        )
+        self.texto_resultado.insert(tk.END, "Archivos procesados:\n")
+        for resumen in resumen_archivos:
+            self.texto_resultado.insert(tk.END, f"- {resumen}\n")
 
-        self.texto_resultado.insert(
-            tk.END,
-            f"Archivo:\n{self.archivo_excel}\n\n"
-        )
+        self.texto_resultado.insert(tk.END, "\n")
+        self.texto_resultado.insert(tk.END, f"Total alumnos: {total_alumnos}\n")
+        self.texto_resultado.insert(tk.END, f"Total preguntas unidas: {total_preguntas}\n\n")
 
-        self.texto_resultado.insert(
-            tk.END,
-            f"Total alumnos: {total_alumnos}\n"
-        )
+        self.texto_resultado.insert(tk.END, "Primeras cuentas:\n")
+        self.texto_resultado.insert(tk.END, str(self.cuentas.head()) + "\n\n")
 
-        self.texto_resultado.insert(
-            tk.END,
-            f"Total preguntas: {total_preguntas}\n\n"
-        )
-
-        self.texto_resultado.insert(
-            tk.END,
-            "Primeras cuentas:\n"
-        )
-
-        self.texto_resultado.insert(
-            tk.END,
-            str(self.cuentas.head())
-        )
-
-        self.texto_resultado.insert(
-            tk.END,
-            "\n\n"
-        )
-
-        self.texto_resultado.insert(
-            tk.END,
-            "Primeras respuestas correctas:\n"
-        )
-
-        self.texto_resultado.insert(
-            tk.END,
-            str(self.respuestas_correctas.head(10))
-        )
-
-    # =========================================================
-    # GENERAR ARCHIVOS
-    # =========================================================
+        self.texto_resultado.insert(tk.END, "Primeras respuestas correctas:\n")
+        self.texto_resultado.insert(tk.END, str(self.respuestas_correctas.head(10)))
 
     def generar_archivos_control_y_dat(self):
-
-        if (
-            self.respuestas_correctas is None
-            or self.respuestas_alumnos is None
-        ):
-
+        if self.respuestas_correctas is None or self.respuestas_alumnos is None:
             messagebox.showwarning(
                 "Aviso",
-                "Primero debes leer los datos."
+                "Primero debes leer y separar los datos."
             )
-
             return
 
         try:
-
-            # =================================================
-            # NOMBRE BASE
-            # =================================================
-
             nombre_base = os.path.splitext(
-                os.path.basename(self.archivo_excel)
+                os.path.basename(self.archivos_excel[0])
             )[0]
 
-            carpeta_salida = os.path.dirname(
-                self.archivo_excel
-            )
-
-            # =================================================
-            # TOTAL RESPUESTAS POSIBLES
-            # =================================================
+            carpeta_salida = os.path.dirname(self.archivos_excel[0])
 
             respuestas_posibles = set()
 
             for respuesta in self.respuestas_correctas:
-
-                if (
-                    pd.notna(respuesta)
-                    and respuesta != "0"
-                ):
-
-                    respuestas_posibles.add(
-                        str(respuesta).strip().upper()
-                    )
+                if pd.notna(respuesta) and respuesta != "0":
+                    respuestas_posibles.add(str(respuesta).strip().upper())
 
             total_respuestas = len(respuestas_posibles)
 
-            # =================================================
-            # ARCHIVO CONTROL
-            # =================================================
-
             control = pd.DataFrame({
-
                 "ITEM": [
-
                     f"Item{str(i + 1).zfill(2)}"
-
-                    for i in range(
-                        len(self.respuestas_correctas)
-                    )
+                    for i in range(len(self.respuestas_correctas))
                 ],
-
-                "RESPUESTA_CORRECTA":
-                    self.respuestas_correctas.values,
-
-                "TOTAL_RESPUESTAS":
-                    [total_respuestas]
-                    * len(self.respuestas_correctas)
-
+                "RESPUESTA_CORRECTA": self.respuestas_correctas.values,
+                "TOTAL_RESPUESTAS": [total_respuestas] * len(self.respuestas_correctas)
             })
 
-            # =================================================
-            # ARCHIVO DAT
-            # =================================================
-
             dat = self.respuestas_alumnos.copy()
-
-            dat = dat.reset_index(drop=True)
-
-            dat.columns = [
-
-                f"Item{str(i + 1).zfill(2)}"
-
-                for i in range(
-                    len(dat.columns)
-                )
-            ]
-
-            cuentas = self.cuentas.reset_index(drop=True)
-
-            dat.insert(
-                0,
-                "CUENTA",
-                cuentas
-            )
-
-            # =================================================
-            # NOMBRES ARCHIVOS
-            # =================================================
+            dat.insert(0, "CUENTA", self.cuentas.reset_index(drop=True))
 
             archivo_control_xlsx = os.path.join(
                 carpeta_salida,
@@ -431,10 +290,6 @@ class AnalizadorPsicometria:
                 f"{nombre_base}_DAT.txt"
             )
 
-            # =================================================
-            # GUARDAR XLSX
-            # =================================================
-
             control.to_excel(
                 archivo_control_xlsx,
                 index=False,
@@ -446,10 +301,6 @@ class AnalizadorPsicometria:
                 index=False,
                 engine="openpyxl"
             )
-
-            # =================================================
-            # GUARDAR TXT
-            # =================================================
 
             control.to_csv(
                 archivo_control_txt,
@@ -467,31 +318,23 @@ class AnalizadorPsicometria:
                 encoding="utf-8"
             )
 
-            # =================================================
-            # MENSAJE
-            # =================================================
-
             messagebox.showinfo(
                 "Éxito",
-                "Archivos generados correctamente."
+                f"Archivos generados correctamente:\n\n"
+                f"{archivo_control_xlsx}\n"
+                f"{archivo_control_txt}\n\n"
+                f"{archivo_dat_xlsx}\n"
+                f"{archivo_dat_txt}"
             )
 
         except Exception as e:
-
             messagebox.showerror(
                 "Error",
-                f"No se pudieron generar:\n\n{e}"
+                f"No se pudieron generar los archivos:\n\n{e}"
             )
 
 
-# =============================================================
-# MAIN
-# =============================================================
-
 if __name__ == "__main__":
-
     root = tk.Tk()
-
     app = AnalizadorPsicometria(root)
-
     root.mainloop()
