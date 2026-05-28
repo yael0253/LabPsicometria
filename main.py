@@ -175,7 +175,7 @@ class AnalizadorPsicometria:
             )
 
             data_final = lista_alumnos[0]
-
+                #Eliminar casillas negra y 0 PENDIENTE
             for siguiente in lista_alumnos[1:]:
                 data_final = pd.merge(
                     data_final,
