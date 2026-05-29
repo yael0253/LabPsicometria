@@ -128,20 +128,67 @@ class AnalizadorPsicometria:
             columnas_preguntas
         ]
 
-        cuentas = cuentas.fillna("0").astype(str).str.strip()
+        # ==========================================
+        # LIMPIAR CUENTAS
+        # ==========================================
+
+        cuentas = (
+            cuentas
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .reset_index(drop=True)
+        )
+
+        # ==========================================
+        # LIMPIAR RESPUESTAS CORRECTAS
+        # ==========================================
 
         respuestas_correctas = self.limpiar_texto(
             respuestas_correctas
         ).reset_index(drop=True)
 
+        # ==========================================
+        # LIMPIAR RESPUESTAS ALUMNOS
+        # ==========================================
+
         respuestas_alumnos = self.limpiar_texto(
             respuestas_alumnos
         ).reset_index(drop=True)
 
+        # ==========================================
+        # ELIMINAR ALUMNOS SIN RESPUESTAS
+        # ==========================================
+
+        respuestas_temp = respuestas_alumnos.replace(
+            ["", "NAN", "nan", "NaN"],
+            "0"
+        )
+
+        filas_validas = respuestas_temp.ne("0").any(axis=1)
+
+        # IMPORTANTE: convertir a lista para evitar error de índices
+        filas_validas = filas_validas.tolist()
+        # Contador de eliminados
+        alumnos_eliminados = (~filas_validas).sum()
+
+        # Guardar para usarlo después
+        self.alumnos_eliminados = int(alumnos_eliminados)
+
+        filas_validas = filas_validas.tolist()
+
+        cuentas = cuentas[filas_validas].reset_index(drop=True)
+
+        respuestas_alumnos = respuestas_alumnos[filas_validas].reset_index(drop=True)
+
+        # ==========================================
+        # INSERTAR CUENTA
+        # ==========================================
+
         respuestas_alumnos.insert(
             0,
             "CUENTA",
-            cuentas.reset_index(drop=True)
+            cuentas
         )
 
         return respuestas_correctas, respuestas_alumnos
