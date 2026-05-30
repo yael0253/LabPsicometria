@@ -165,6 +165,7 @@ class AnalizadorPsicometria:
             "0"
         )
 
+        
         # 1. Creamos la máscara booleana en Pandas para identificar filas con al menos una respuesta válida
         filas_validas_mask = respuestas_temp.ne("0").any(axis=1)
 
@@ -180,6 +181,8 @@ class AnalizadorPsicometria:
         # 5. Aplicamos el filtro a las cuentas y las respuestas
         cuentas = cuentas[filas_validas].reset_index(drop=True)
         respuestas_alumnos = respuestas_alumnos[filas_validas].reset_index(drop=True)
+
+        
 
         # ==========================================
         # INSERTAR CUENTA
