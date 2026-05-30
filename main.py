@@ -165,7 +165,7 @@ class AnalizadorPsicometria:
             "0"
         )
 
-        # 1. Creamos la máscara booleana en Pandas (aquí sigue siendo un objeto de Pandas)
+        # 1. Creamos la máscara booleana en Pandas para identificar filas con al menos una respuesta válida
         filas_validas_mask = respuestas_temp.ne("0").any(axis=1)
 
         # 2. Contamos los eliminados usando Pandas ANTES de convertir a lista
@@ -174,7 +174,7 @@ class AnalizadorPsicometria:
         # 3. Guardamos el valor como un entero nativo de Python
         self.alumnos_eliminados = int(alumnos_eliminados)
 
-        # 4. Ahora sí, convertimos a lista de manera segura para filtrar las filas
+        # 4. Convertimos a lista de manera segura para filtrar las filas
         filas_validas = filas_validas_mask.tolist()
 
         # 5. Aplicamos el filtro a las cuentas y las respuestas
