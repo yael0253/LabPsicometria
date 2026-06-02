@@ -46,7 +46,7 @@ class AnalizadorPsicometria:
             font=("Arial", 12),
             command=self.seleccionar_pdf
         ).pack(pady=6)
-
+        
         tk.Button(
             self.root,
             text="Leer, separar y unir datos",
@@ -204,32 +204,157 @@ class AnalizadorPsicometria:
         reader = PdfReader(self.archivo_pdf)
         opciones_por_item = []
 
-        for pagina in reader.pages:
+        for num_pagina, pagina in enumerate(reader.pages, start=1):
             try:
                 texto = pagina.extract_text()
 
                 if not texto:
                     continue
 
-                lineas = texto.splitlines()
+                # Buscar opciones tipo:
+                # A [79]
+                # B [30]
+                # C [151]
+                opciones = re.findall(
+                    r'([A-E])\s*\[\s*\d+\s*\]',
+                    texto,
+                    re.MULTILINE
+                )
 
-                opciones = []
-
-                for linea in lineas:
-                    linea = linea.strip()
-
-                    if re.match(r"^[A-Z]\s*\[\d+\]$", linea):
-                        letra = linea[0]
-                        opciones.append(letra)
-
+                # Solo contar páginas que parezcan reactivos
                 if len(opciones) >= 2:
-                    opciones_por_item.append(len(opciones))
+                    opciones_unicas = []
 
-            except Exception:
-                pass
+                    for opcion in opciones:
+                        if opcion not in opciones_unicas:
+                            opciones_unicas.append(opcion)
 
+                    opciones_por_item.append(len(opciones_unicas))
+
+                    print(
+                        f"Página {num_pagina}: opciones detectadas {opciones_unicas}"
+                    )
+
+            except Exception as e:
+                    print(f"Error en página {num_pagina}: {e}")
         return opciones_por_item
+    
+    def leer_pdf_temas(self, total_preguntas_esperadas=None):
 
+            if not self.archivo_pdf:
+                return []
+
+            reader = PdfReader(self.archivo_pdf)
+
+            temas_detectados = []
+
+            for num_pagina, pagina in enumerate(reader.pages, start=1):
+
+                try:
+                    texto = pagina.extract_text()
+
+                    if not texto:
+                        continue
+
+                    if "Tema" not in texto and "Reactivos" not in texto and "Promedio" not in texto:
+                        continue
+
+                    texto = texto.replace("\n", " ")
+                    texto = " ".join(texto.split())
+
+                    if "rpbis Promedio" in texto:
+                        texto = texto.split("rpbis Promedio", 1)[1]
+
+                    if "Facultad de Medicina" in texto:
+                        texto = texto.split("Facultad de Medicina", 1)[0]
+
+                    resultados = re.findall(
+                        r"([A-ZÁÉÍÓÚÑÜ ,]+?)(\d{1,2})(0?\.\d+|\.\d+)(0?\.\d+|\.\d+)",
+                        texto
+                    )
+
+                    for tema, cantidad_texto, p_promedio, rpbis in resultados:
+
+                        tema = tema.strip().upper()
+
+                        tema = re.sub(
+                            r"[^A-ZÁÉÍÓÚÑÜ ,]",
+                            "",
+                            tema
+                        ).strip()
+
+                        palabras_invalidas = [
+                            "RESUMEN",
+                            "REACTIVOS",
+                            "PROMEDIO",
+                            "ASISTENTES",
+                            "CALIFICACIÓN",
+                            "FIABILIDAD",
+                            "DIFICULTAD",
+                            "DISCRIMINACIÓN",
+                            "TEMA"
+                        ]
+
+                        if any(palabra in tema for palabra in palabras_invalidas):
+                            continue
+
+                        if len(tema) < 3:
+                            continue
+
+                        posibles_cantidades = []
+
+                        cantidad_normal = int(cantidad_texto)
+                        posibles_cantidades.append(cantidad_normal)
+
+                        # Caso ambiguo:
+                        # 30.460 puede ser 3 + 0.460
+                        # pero 200.579 puede ser 20 + 0.579
+                        if len(cantidad_texto) == 2 and cantidad_texto.endswith("0"):
+                            posibles_cantidades.append(int(cantidad_texto[0]))
+
+                        posibles_cantidades = list(set(posibles_cantidades))
+
+                        temas_detectados.append({
+                            "tema": tema,
+                            "cantidades": posibles_cantidades,
+                            "capturado": cantidad_texto,
+                            "pagina": num_pagina
+                        })
+
+                except Exception as e:
+                    print("Error leyendo temas:", e)
+
+            temas_expandido = []
+
+            for item in temas_detectados:
+
+                tema = item["tema"]
+                cantidades = item["cantidades"]
+
+                # Correcciones especiales conocidas
+                if "IMÁGENES" in tema:
+                    cantidad = 20
+
+                else:
+                    # Si hay ambigüedad como 30, usar 3
+                    cantidad = min(cantidades)
+
+                print(
+                    f"Página {item['pagina']} | {tema} -> {cantidad} "
+                    f"(capturado: {item['capturado']})"
+                )
+
+                for _ in range(cantidad):
+                    temas_expandido.append(tema)
+
+            if total_preguntas_esperadas is not None:
+                if len(temas_expandido) > total_preguntas_esperadas:
+                    temas_expandido = temas_expandido[:total_preguntas_esperadas]
+
+            print("TOTAL TEMAS EXPANDIDOS:", len(temas_expandido))
+
+            return temas_expandido
+       
     def leer_y_separar_datos(self):
         if not self.archivos_excel:
             messagebox.showwarning(
@@ -285,8 +410,12 @@ class AnalizadorPsicometria:
 
             if self.archivo_pdf:
                 self.opciones_pdf = self.leer_pdf_opciones()
+                self.temas_pdf = self.leer_pdf_temas(
+                     total_preguntas_esperadas=len(self.respuestas_correctas)
+                )
             else:
                 self.opciones_pdf = []
+                self.temas_pdf = []
 
             total_alumnos = len(self.cuentas)
             total_preguntas = len(self.respuestas_correctas)
@@ -320,6 +449,8 @@ class AnalizadorPsicometria:
         self.texto_resultado.insert(tk.END, f"Total alumnos válidos: {total_alumnos}\n")
         self.texto_resultado.insert(tk.END, f"Alumnos eliminados sin respuestas: {self.alumnos_eliminados}\n")
         self.texto_resultado.insert(tk.END, f"Total preguntas unidas: {total_preguntas}\n\n")
+        self.texto_resultado.insert(tk.END, f"Temas detectados PDF: {len(self.temas_pdf)}\n"
+)
 
         if self.archivo_pdf:
             self.texto_resultado.insert(
@@ -374,6 +505,19 @@ class AnalizadorPsicometria:
 
                 total_respuestas = len(respuestas_posibles)
                 total_respuestas_lista = [total_respuestas] * total_preguntas
+            
+            # ==========================================
+            # PREPARAR TEMAS PARA CONTROL
+            # ==========================================
+
+            temas_control = list(self.temas_pdf)
+
+            if len(temas_control) < total_preguntas:
+                faltantes = total_preguntas - len(temas_control)
+                temas_control.extend(["PRELIMINAR"] * faltantes)
+
+            elif len(temas_control) > total_preguntas:
+                temas_control = temas_control[:total_preguntas]
 
             control = pd.DataFrame({
                 "ITEM": [
@@ -382,7 +526,7 @@ class AnalizadorPsicometria:
                 ],
                 "RESPUESTA_CORRECTA": self.respuestas_correctas.values,
                 "TOTAL_RESPUESTAS": total_respuestas_lista,
-                "TEMA": [""] * total_preguntas,
+                "TEMA": temas_control,
                 "Y": ["Y"] * total_preguntas,
                 "M": ["M"] * total_preguntas
             })
