@@ -4,7 +4,7 @@ import pandas as pd
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from PyPDF2 import PdfReader
-from PIL import Image, ImageTk  # Librería para manejar imágenes PNG/JPG
+#from PIL import Image, ImageTk  # Librería para manejar imágenes PNG/JPG
 
 
 class AnalizadorPsicometria:
