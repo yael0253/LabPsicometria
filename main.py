@@ -135,6 +135,48 @@ class AnalizadorPsicometria:
         btn_generar.grid(row=0, column=3, padx=10, pady=5, sticky="ew")
 
         frame_acciones.columnconfigure((0, 1, 2, 3), weight=1)
+        # ==========================================
+        # LISTA DE ARCHIVOS EXCEL CARGADOS
+        # ==========================================
+
+        frame_lista = ttk.LabelFrame(
+            self.tab_etl,
+            text=" Archivos Excel cargados ",
+            padding=10
+        )
+        frame_lista.pack(fill="x", padx=15, pady=5)
+
+        self.lista_excel = tk.Listbox(
+            frame_lista,
+            height=5,
+            font=("Consolas", 10)
+        )
+        self.lista_excel.pack(side="left", fill="both", expand=True)
+
+        scroll_lista = ttk.Scrollbar(
+            frame_lista,
+            orient="vertical",
+            command=self.lista_excel.yview
+        )
+        scroll_lista.pack(side="right", fill="y")
+
+        self.lista_excel.config(yscrollcommand=scroll_lista.set)
+
+        frame_botones_lista = ttk.Frame(self.tab_etl)
+        frame_botones_lista.pack(fill="x", padx=15, pady=5)
+
+
+        ttk.Button(
+            frame_botones_lista,
+            text="🗑 Eliminar seleccionado",
+            command=self.eliminar_excel_seleccionado
+        ).pack(side="left", padx=5)
+
+        ttk.Button(
+            frame_botones_lista,
+            text="🧹 Limpiar lista",
+            command=self.limpiar_lista_excel
+        ).pack(side="left", padx=5)
 
         frame_consola = ttk.LabelFrame(self.tab_etl, text=" Consola de Resultados y Diagnóstico ", padding=10)
         frame_consola.pack(fill="both", expand=True, padx=15, pady=10)
@@ -172,15 +214,78 @@ class AnalizadorPsicometria:
     # LOGICA LOGÍSTICA DE ARCHIVOS (SE MANTIENE IGUAL QUE TU SCRIPT ORIGINAL)
     # =====================================================================
     def seleccionar_archivos(self):
-        self.archivos_excel = filedialog.askopenfilenames(title="Seleccionar archivo(s) Excel", filetypes=[("Archivos Excel", "*.xlsx *.xls")])
-        if self.archivos_excel:
-            archivos = "\n".join([os.path.basename(archivo) for archivo in self.archivos_excel])
-            messagebox.showinfo("Archivos seleccionados", f"Se seleccionaron {len(self.archivos_excel)} archivo(s):\n\n{archivos}")
+        nuevos_archivos = filedialog.askopenfilenames(
+            title="Seleccionar archivo(s) Excel",
+            filetypes=[("Archivos Excel", "*.xlsx *.xls")]
+        )
 
+        if not nuevos_archivos:
+            return
+
+        agregados = 0
+
+        for archivo in nuevos_archivos:
+            if archivo not in self.archivos_excel:
+                self.archivos_excel.append(archivo)
+                agregados += 1
+
+        self.actualizar_lista_excel()
+
+        messagebox.showinfo(
+            "Archivos seleccionados",
+            f"Se agregaron {agregados} archivo(s) nuevo(s).\n"
+            f"Total en lista: {len(self.archivos_excel)}"
+        )
     def seleccionar_pdf(self):
         self.archivo_pdf = filedialog.askopenfilename(title="Seleccionar PDF de análisis", filetypes=[("PDF", "*.pdf")])
         if self.archivo_pdf:
             messagebox.showinfo("PDF seleccionado", os.path.basename(self.archivo_pdf))
+
+    #Lista de excel cargados
+    def actualizar_lista_excel(self):
+        self.lista_excel.delete(0, tk.END)
+
+        for archivo in self.archivos_excel:
+            self.lista_excel.insert(
+                tk.END,
+                os.path.basename(archivo)
+            )
+
+
+    def eliminar_excel_seleccionado(self):
+        seleccionado = self.lista_excel.curselection()
+
+        if not seleccionado:
+            messagebox.showwarning(
+                "Aviso",
+                "Selecciona un archivo de la lista para eliminar."
+            )
+            return
+
+        indice = seleccionado[0]
+        archivo_eliminado = os.path.basename(self.archivos_excel[indice])
+
+        self.archivos_excel.pop(indice)
+        self.actualizar_lista_excel()
+
+        messagebox.showinfo(
+            "Archivo eliminado",
+            f"Se eliminó de la lista:\n\n{archivo_eliminado}"
+        )
+
+
+    def limpiar_lista_excel(self):
+        if not self.archivos_excel:
+            return
+
+        confirmar = messagebox.askyesno(
+            "Confirmar",
+            "¿Seguro que quieres limpiar todos los Excel cargados?"
+        )
+
+        if confirmar:
+            self.archivos_excel = []
+            self.actualizar_lista_excel()
 
     def limpiar_texto(self, col):
         return col.fillna("0").astype(str).str.strip().str.upper().replace("", "0")
