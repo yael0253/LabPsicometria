@@ -243,37 +243,98 @@ class AnalizadorPsicometria:
                 print(f"Error en página {num_pagina}: {e}")
         return opciones_por_item
         
+    
     def leer_pdf_temas(self, total_preguntas_esperadas=None):
-        if not self.archivo_pdf: return []
+        if not self.archivo_pdf:
+            return []
+
         reader = PdfReader(self.archivo_pdf)
         temas_detectados = []
+
+        leyendo_tabla_temas = False
+
         for num_pagina, pagina in enumerate(reader.pages, start=1):
             try:
                 texto = pagina.extract_text()
-                if not texto or not any(x in texto for x in ["Tema", "Reactivos", "Promedio"]): continue
+
+                if not texto:
+                    continue
+
                 texto = " ".join(texto.replace("\n", " ").split())
-                if "rpbis Promedio" in texto: texto = texto.split("rpbis Promedio", 1)[1]
-                if "Facultad de Medicina" in texto: texto = texto.split("Facultad de Medicina", 1)[0]
-                
-                resultados = re.findall(r"([A-ZÁÉÍÓÚÑÜ ,]+?)(\d{1,2})(0?\.\d+|\.\d+)(0?\.\d+|\.\d+)", texto)
-                for tema, cantidad_texto, p_promedio, rpbis in resultados:
-                    tema = re.sub(r"[^A-ZÁÉÍÓÚÑÜ ,]", "", tema.strip().upper()).strip()
-                    palabras_invalidas = ["RESUMEN", "REACTIVOS", "PROMEDIO", "ASISTENTES", "CALIFICACIÓN", "FIABILIDAD", "DIFICULTAD", "DISCRIMINACIÓN", "TEMA"]
-                    if any(palabra in tema for palabra in palabras_invalidas) or len(tema) < 3: continue
-                    posibles_cantidades = [int(cantidad_texto)]
-                    if len(cantidad_texto) == 2 and cantidad_texto.endswith("0"): posibles_cantidades.append(int(cantidad_texto[0]))
-                    temas_detectados.append({"tema": tema, "cantidades": list(set(posibles_cantidades))})
+
+                if "Tema" in texto and "Reactivos" in texto:
+                    leyendo_tabla_temas = True
+
+                if not leyendo_tabla_temas:
+                    continue
+
+                if "rpbis Promedio" in texto:
+                    texto = texto.split("rpbis Promedio", 1)[1]
+
+                if "Reactivos por dificultad" in texto:
+                    texto = texto.split("Reactivos por dificultad", 1)[0]
+                    leyendo_tabla_temas = False
+                print("\n================ TEXTO DE LA TABLA ================\n")
+                print(texto)
+                print("\n===================================================\n")
+
+                resultados = re.findall(
+                    r"([A-Za-zÁÉÍÓÚÑÜáéíóúñü0-9 ,().:]+?)(\d{1,2})(?=0\.\d{3})0\.\d{3}0\.\d{3}",
+                   texto
+                )
+
+                for tema, cantidad_texto in resultados:
+                    tema = re.sub(
+                        r"[^A-ZÁÉÍÓÚÑÜa-záéíóúñü ,]",
+                        "",
+                        tema.strip()
+                    ).strip().upper()
+                    # Quitar numeración inicial del tema:
+                    # 01 Tema...
+                    # 10. Tema...
+                    tema = re.sub(
+                        r"^\d{1,2}\.?\s*",
+                        "",
+                        tema
+                    ).strip()
+
+                    if len(tema) < 3:
+                        continue
+
+                    palabras_invalidas = [
+                        "RESUMEN", "REACTIVOS", "PROMEDIO", "ASISTENTES",
+                        "CALIFICACIÓN", "FIABILIDAD", "DIFICULTAD",
+                        "DISCRIMINACIÓN"
+                    ]
+
+                    if tema.strip() == "TEMA":
+                        continue
+
+                    if any(x in tema for x in palabras_invalidas):
+                        continue
+
+                    cantidad = int(cantidad_texto)
+
+                    if cantidad < 1 or cantidad > 50:
+                        continue
+
+                    temas_detectados.append((tema, cantidad))
+                    print(f"TEMA DETECTADO: {tema} -> {cantidad}")
+
             except Exception as e:
                 print("Error leyendo temas:", e)
-                
+
         temas_expandido = []
-        for item in temas_detectados:
-            tema, cantidades = item["tema"], item["cantidades"]
-            cantidad = 20 if "IMÁGENES" in tema else min(cantidades)
-            for _ in range(cantidad): temas_expandido.append(tema)
-            
-        if total_preguntas_esperadas is not None and len(temas_expandido) > total_preguntas_esperadas:
+
+        for tema, cantidad in temas_detectados:
+            for _ in range(cantidad):
+                temas_expandido.append(tema)
+
+        print("TOTAL TEMAS EXPANDIDOS:", len(temas_expandido))
+
+        if total_preguntas_esperadas is not None:
             temas_expandido = temas_expandido[:total_preguntas_esperadas]
+
         return temas_expandido
        
     def leer_y_separar_datos(self):
