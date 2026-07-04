@@ -139,44 +139,66 @@ class AnalizadorPsicometria:
         # LISTA DE ARCHIVOS EXCEL CARGADOS
         # ==========================================
 
-        frame_lista = ttk.LabelFrame(
-            self.tab_etl,
-            text=" Archivos Excel cargados ",
-            padding=10
+        frame_acciones = ttk.LabelFrame(
+        self.tab_etl,
+            text=" Archivos cargados ",
+            padding=15
         )
-        frame_lista.pack(fill="x", padx=15, pady=5)
+        frame_acciones.pack(fill="x", padx=15, pady=10)
 
-        self.lista_excel = tk.Listbox(
-            frame_lista,
-            height=5,
+        self.lista_archivos = tk.Listbox(
+            frame_acciones,
+            height=6,
             font=("Consolas", 10)
         )
-        self.lista_excel.pack(side="left", fill="both", expand=True)
+        self.lista_archivos.grid(row=0, column=0, columnspan=4, sticky="ew", padx=10, pady=5)
 
-        scroll_lista = ttk.Scrollbar(
-            frame_lista,
+        scroll_archivos = ttk.Scrollbar(
+            frame_acciones,
             orient="vertical",
-            command=self.lista_excel.yview
+            command=self.lista_archivos.yview
         )
-        scroll_lista.pack(side="right", fill="y")
+        scroll_archivos.grid(row=0, column=4, sticky="ns", pady=5)
 
-        self.lista_excel.config(yscrollcommand=scroll_lista.set)
+        self.lista_archivos.config(yscrollcommand=scroll_archivos.set)
 
-        frame_botones_lista = ttk.Frame(self.tab_etl)
-        frame_botones_lista.pack(fill="x", padx=15, pady=5)
+        #ttk.Button(
+         #   frame_acciones,
+          #  text="➕ Agregar Excel",
+           # command=self.seleccionar_archivos
+        #).grid(row=1, column=0, padx=10, pady=5, sticky="ew")
 
+        #ttk.Button(
+        #    frame_acciones,
+        #   text="➕ Agregar PDF",
+        #    command=self.seleccionar_pdf
+        #).grid(row=1, column=1, padx=10, pady=5, sticky="ew")
 
         ttk.Button(
-            frame_botones_lista,
+            frame_acciones,
             text="🗑 Eliminar seleccionado",
-            command=self.eliminar_excel_seleccionado
-        ).pack(side="left", padx=5)
+            command=self.eliminar_archivo_seleccionado
+        ).grid(row=1, column=2, padx=10, pady=5, sticky="ew")
 
         ttk.Button(
-            frame_botones_lista,
+            frame_acciones,
             text="🧹 Limpiar lista",
-            command=self.limpiar_lista_excel
-        ).pack(side="left", padx=5)
+            command=self.limpiar_archivos
+        ).grid(row=1, column=3, padx=10, pady=5, sticky="ew")
+
+        #ttk.Button(
+        #    frame_acciones,
+        #    text="⚙️ Leer, separar y unir datos",
+        #    command=self.leer_y_separar_datos
+        #).grid(row=2, column=0, columnspan=2, padx=10, pady=8, sticky="ew")
+
+        #ttk.Button(
+        #    frame_acciones,
+        #    text="💾 Generar CONTROL y DAT",
+        #    command=self.generar_archivos_control_y_dat
+        #).grid(row=2, column=2, columnspan=2, padx=10, pady=8, sticky="ew")
+
+        frame_acciones.columnconfigure((0, 1, 2, 3), weight=1)
 
         frame_consola = ttk.LabelFrame(self.tab_etl, text=" Consola de Resultados y Diagnóstico ", padding=10)
         frame_consola.pack(fill="both", expand=True, padx=15, pady=10)
@@ -229,17 +251,35 @@ class AnalizadorPsicometria:
                 self.archivos_excel.append(archivo)
                 agregados += 1
 
-        self.actualizar_lista_excel()
+        self.actualizar_lista_archivos()
 
         messagebox.showinfo(
-            "Archivos seleccionados",
-            f"Se agregaron {agregados} archivo(s) nuevo(s).\n"
-            f"Total en lista: {len(self.archivos_excel)}"
+            "Excel agregados",
+            f"Se agregaron {agregados} archivo(s) Excel."
         )
+
+       # messagebox.showinfo(
+        #    "Archivos seleccionados",
+         #   f"Se agregaron {agregados} archivo(s) nuevo(s).\n"
+          #  f"Total en lista: {len(self.archivos_excel)}"
+        #)
+
     def seleccionar_pdf(self):
-        self.archivo_pdf = filedialog.askopenfilename(title="Seleccionar PDF de análisis", filetypes=[("PDF", "*.pdf")])
-        if self.archivo_pdf:
-            messagebox.showinfo("PDF seleccionado", os.path.basename(self.archivo_pdf))
+        archivo = filedialog.askopenfilename(
+            title="Seleccionar PDF de análisis",
+            filetypes=[("PDF", "*.pdf")]
+        )
+
+        if not archivo:
+            return
+
+        self.archivo_pdf = archivo
+        self.actualizar_lista_archivos()
+
+        messagebox.showinfo(
+            "PDF seleccionado",
+            os.path.basename(self.archivo_pdf)
+        )
 
     #Lista de excel cargados
     def actualizar_lista_excel(self):
@@ -286,6 +326,72 @@ class AnalizadorPsicometria:
         if confirmar:
             self.archivos_excel = []
             self.actualizar_lista_excel()
+
+    def actualizar_lista_archivos(self):
+        self.lista_archivos.delete(0, tk.END)
+
+        for archivo in self.archivos_excel:
+            self.lista_archivos.insert(
+                tk.END,
+                f"📄 Excel  | {os.path.basename(archivo)}"
+            )
+
+        if self.archivo_pdf:
+            self.lista_archivos.insert(
+                tk.END,
+                f"📕 PDF    | {os.path.basename(self.archivo_pdf)}"
+            )
+
+
+    def eliminar_archivo_seleccionado(self):
+        seleccionado = self.lista_archivos.curselection()
+
+        if not seleccionado:
+            messagebox.showwarning(
+                "Aviso",
+                "Selecciona un archivo de la lista."
+            )
+            return
+
+        indice = seleccionado[0]
+
+        # Primero están los Excel, al final el PDF
+        if indice < len(self.archivos_excel):
+            eliminado = os.path.basename(self.archivos_excel[indice])
+            self.archivos_excel.pop(indice)
+
+            messagebox.showinfo(
+                "Archivo eliminado",
+                f"Se eliminó el Excel:\n\n{eliminado}"
+            )
+
+        else:
+            if self.archivo_pdf:
+                eliminado = os.path.basename(self.archivo_pdf)
+                self.archivo_pdf = None
+                self.opciones_pdf = []
+                self.temas_pdf = []
+
+                messagebox.showinfo(
+                    "Archivo eliminado",
+                    f"Se eliminó el PDF:\n\n{eliminado}"
+                )
+
+        self.actualizar_lista_archivos()
+
+
+    def limpiar_archivos(self):
+        confirmar = messagebox.askyesno(
+            "Confirmar",
+            "¿Seguro que quieres limpiar todos los archivos cargados?"
+        )
+
+        if confirmar:
+            self.archivos_excel = []
+            self.archivo_pdf = None
+            self.opciones_pdf = []
+            self.temas_pdf = []
+            self.actualizar_lista_archivos()
 
     def limpiar_texto(self, col):
         return col.fillna("0").astype(str).str.strip().str.upper().replace("", "0")
