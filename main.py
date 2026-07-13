@@ -40,6 +40,9 @@ class AnalizadorPsicometria:
         self.archivo_pdf = None
         self.respuestas_correctas = None
         self.respuestas_alumnos = None
+        self.resultados_tct= None
+        self.detalle_opciones_tct = None
+        self.resumen_tct = None
         self.cuentas = None
         self.opciones_pdf = []
         self.temas_pdf = []
@@ -305,16 +308,16 @@ class AnalizadorPsicometria:
                 frame_resumen,
                 textvariable=variable
             ).grid(row=fila, column=columna+1, sticky="w", padx=(2,15), pady=2)
-            #==========================================
-            #Tabla de resultados TCT
-            #==========================================
+        #==========================================
+        #Tabla de resultados TCT
+        #==========================================
         frame_tabla = ttk.LabelFrame(
             tab,
             text="Resultados por reactivo",
             padding=10
         )
         frame_tabla.pack(fill="both",expand=True, padx=15, pady=10)
-        columnas = ("Item", "Correcta", "n", "p", "rpbis","alpha_sin", "Flag")
+        columnas = ("item", "correcta", "n", "p", "rpbis","alpha_sin", "flag")
         self.tabla_tct = ttk.Treeview(
             frame_tabla,
             columns=columnas,
@@ -341,8 +344,52 @@ class AnalizadorPsicometria:
         }
 
         for columna in columnas:
-            self.tabla_tct.heading(columna, text=encabezados.get(columna, columna))
-            self.tabla_tct.column(columna, width=anchos.get(columna, 100))
+            self.tabla_tct.heading(
+                columna,
+                text=encabezados[columna]
+            )
+            self.tabla_tct.column(
+                columna,
+                width=anchos[columna],
+                anchor="center"
+            )
+        scrollbar_vertical = ttk.Scrollbar(
+            frame_tabla,
+            orient="vertical",
+            command=self.tabla_tct.yview
+        )
+        scrollbar_horizontal = ttk.Scrollbar(
+            frame_tabla,
+            orient="horizontal",
+            command=self.tabla_tct.xview
+        )
+        self.tabla_tct.configure(
+            yscrollcommand=scrollbar_vertical.set,
+            xscrollcommand=scrollbar_horizontal.set
+        )
+        self.tabla_tct.grid(
+            row=0,
+            column=0,
+            sticky="nsew"
+        )
+        scrollbar_vertical.grid(
+            row=0,
+            column=1,
+            sticky="ns"
+        )
+        scrollbar_horizontal.grid(
+            row=1,
+            column=0,
+            sticky="ew"
+        )
+        frame_tabla.rowconfigure(0,weight=1)
+        frame_tabla.columnconfigure(0, weight=1)
+
+        self.tabla_tct.tag_configure(
+            "flag_k",
+            background="#FFDADA"
+        )
+
 
     def configurar_pestaña_mantenimiento(self, tab, titulo_modulo):
         frame_central = ttk.Frame(tab)
@@ -367,7 +414,7 @@ class AnalizadorPsicometria:
         lbl_msg.pack(pady=10)
 
     # =====================================================================
-    # LOGICA LOGÍSTICA DE ARCHIVOS (SE MANTIENE IGUAL QUE TU SCRIPT ORIGINAL)
+    # Logica de seleccio de archivos
     # =====================================================================
     def seleccionar_archivos(self):
         nuevos_archivos = filedialog.askopenfilenames(
@@ -769,6 +816,383 @@ class AnalizadorPsicometria:
         except Exception as e:
             messagebox.showerror("Error", f"No se pudieron generar los archivos:\n\n{e}")
 
+    def calcular_alpha_cronbach(self, matriz_binaria):
+        k = matriz_binaria.shape[1]
+
+        if k <= 1:
+            return 0.0 
+        varianzas_items = matriz_binaria.var(
+            axis=0,
+            ddof=1
+        ).sum()
+        puntajes_totales = matriz_binaria.sum(axis=1)
+        varianza_total = puntajes_totales.var(ddof=1)
+        if pd.isna(varianza_total) or varianza_total == 0:
+            return 0.0
+        
+        alpha = (
+            k / (k - 1)
+        )*(
+            1 - varianzas_items / varianza_total
+        )
+        return float(alpha)
+    
+    def analizar_tct(self):
+        if(
+            self.respuestas_alumnos is None
+            or self.respuestas_correctas is None
+        ):
+            messagebox.showwarning(
+                "datos no disponibles",
+                "Primero debes cargar y unir los datos en la pestaña principal."
+            )
+            return
+        try:
+            respuestas = (
+                self.respuestas_alumnos
+                .copy()
+                .fillna("0")
+                .astype(str)
+                .apply(lambda columna: columna.str.strip().str.upper())
+            )
+            correctas = (
+                self.respuestas_correctas
+                .reset_index(drop=True)
+                .fillna("0")
+                .astype(str)
+                .str.strip()
+                .str.upper()
+            )
+            if respuestas.shape[1] != len(correctas):
+                raise ValueError(
+                    "La cantidad de columnas de respuestas no coincide "
+                    "con la catidad de respuestas corrrectas."
+                )
+            #====================
+            #Matriz binaria: 1 = Correcto, 0 = Incorrecto
+            #====================
+            matriz_binaria = pd.DataFrame(
+                index=respuestas.index
+            ) 
+            for indice, columna in enumerate(respuestas.columns):
+                respuesta_correcta = correctas.iloc[indice]
+
+                matriz_binaria[columna] = (
+                    respuestas[columna]  == respuesta_correcta
+                ).astype(int)
+            puntaje_total = matriz_binaria.sum(axis=1)
+            alpha_general = self.calcular_alpha_cronbach(
+                matriz_binaria
+            )
+
+            resultados = []
+            detalle_opciones = []
+
+            for indice, columna in enumerate(respuestas.columns):
+                numero_item = indice + 1
+                correcta = correctas.iloc[indice]
+
+                serie_item = matriz_binaria[columna]
+
+                # Dificultad
+                p = float(serie_item.mean())
+                #Correccion por espuriedad:
+                #correlacionar el item con el total sin ese mismo item.
+                total_sin_item = puntaje_total - serie_item
+
+                if(
+                    serie_item.nunique() <= 1
+                    or total_sin_item.nunique() <=1
+                ):
+                    rpbis = 0.0
+                else:
+                    rpbis = serie_item.corr(total_sin_item)
+
+                    if pd.isna(rpbis):
+                        rpbis = 0.0
+                matriz_sin_item = matriz_binaria.drop(
+                    columns=[columna]
+                )
+                alpha_sin_item = self.calcular_alpha_cronbach(
+                    matriz_sin_item
+                )
+                # ==========================================
+                # Correlacion de cada opcion
+                # ==========================================
+                valores_columna = respuestas[columna]
+
+                opciones = sorted(
+                    opcion
+                    for opcion in valores_columna.unique()
+                    if opcion not in {
+                        "",
+                        "0",
+                        "NAN",
+                        "NONE",
+                        "O",
+                        "N"
+                    }
+                )
+
+                correlaciones = {}
+
+                for opcion in opciones:
+                    seleccion_opcion = (
+                        valores_columna == opcion
+                    ).astype(int)
+
+                    if (
+                        seleccion_opcion.nunique() <= 1
+                        or total_sin_item.nunique() <= 1
+                    ):
+                        correlacion = 0.0
+                    else:
+                        correlacion = seleccion_opcion.corr(
+                            total_sin_item
+                        )
+
+                        if pd.isna(correlacion):
+                            correlacion = 0.0
+
+                    correlaciones[opcion] = float(correlacion)
+
+                    detalle_opciones.append({
+                        "Item": f"ITEM{numero_item}",
+                        "Opcion": opcion,
+                        "Es_correcta": opcion == correcta,
+                        "N": int((valores_columna == opcion).sum()),
+                        "Proporcion": float(
+                            (valores_columna == opcion).mean()
+                        ),
+                        "Rpbis": float(correlacion)
+                    })
+
+                correlacion_correcta = correlaciones.get(
+                    correcta,
+                    rpbis
+                )
+
+                distractores_superiores = [
+                    opcion
+                    for opcion, correlacion in correlaciones.items()
+                    if (
+                        opcion != correcta
+                        and correlacion > correlacion_correcta
+                    )
+                ]
+
+                flag_k = len(distractores_superiores) > 0
+
+                resultados.append({
+                    "Item": f"ITEM{numero_item}",
+                    "Correcta": correcta,
+                    "N": len(respuestas),
+                    "P": p,
+                    "Rpbis": float(rpbis),
+                    "Alpha_sin_item": float(alpha_sin_item),
+                    "Flag": "K" if flag_k else "",
+                    "Distractores_superiores": ", ".join(
+                        distractores_superiores
+                    )
+                })
+
+            self.resultados_tct = pd.DataFrame(resultados)
+            self.detalle_opciones_tct = pd.DataFrame(
+                detalle_opciones
+            )
+
+            items_k = self.resultados_tct[
+                self.resultados_tct["Flag"] == "K"
+            ]
+
+            self.resumen_tct = {
+                "alumnos": len(respuestas),
+                "items": respuestas.shape[1],
+                "media_aciertos": float(puntaje_total.mean()),
+                "alpha": float(alpha_general),
+                "media_p": float(
+                    self.resultados_tct["P"].mean()
+                ),
+                "media_rpbis": float(
+                    self.resultados_tct["Rpbis"].mean()
+                ),
+                "items_k": items_k["Item"].tolist()
+            }
+
+            self.mostrar_resultados_tct()
+
+            self.btn_exportar_tct.config(
+                state="normal"
+            )
+
+            messagebox.showinfo(
+                "Análisis TCT terminado",
+                f"Se analizaron {respuestas.shape[1]} reactivos.\n"
+                f"Reactivos con Flag K: {len(items_k)}"
+            )
+
+        except Exception as e:
+            messagebox.showerror(
+                "Error en análisis TCT",
+                f"No se pudo completar el análisis:\n\n{e}"
+            )
+
+    def mostrar_resultados_tct(self):
+        for fila in self.tabla_tct.get_children():
+            self.tabla_tct.delete(fila)
+
+        if self.resultados_tct is None:
+            return
+
+        for _, fila in self.resultados_tct.iterrows():
+            etiqueta = (
+                "flag_k"
+                if fila["Flag"] == "K"
+                else ""
+            )
+
+            self.tabla_tct.insert(
+                "",
+                tk.END,
+                values=(
+                    fila["Item"],
+                    fila["Correcta"],
+                    fila["N"],
+                    f"{fila['P']:.3f}",
+                    f"{fila['Rpbis']:.3f}",
+                    f"{fila['Alpha_sin_item']:.3f}",
+                    fila["Flag"]
+                ),
+                tags=(etiqueta,)
+            )
+
+        resumen = self.resumen_tct
+
+        self.var_tct_alumnos.set(
+            str(resumen["alumnos"])
+        )
+        self.var_tct_reactivos.set(
+            str(resumen["items"])
+        )
+        self.var_tct_media.set(
+            f"{resumen['media_aciertos']:.2f}"
+        )
+        self.var_alpha.set(
+            f"{resumen['alpha']:.3f}"
+        )
+        self.var_tct_p.set(
+            f"{resumen['media_p']:.3f}"
+        )
+        self.var_tct_rpbis.set(
+            f"{resumen['media_rpbis']:.3f}"
+        )
+
+        if resumen["items_k"]:
+            self.var_tct_k.set(
+                ", ".join(resumen["items_k"])
+            )
+        else:
+            self.var_tct_k.set(
+                "Ninguno"
+            )
+    def limpiar_resultados_tct(self):
+        self.resultados_tct = None
+        self.detalle_opciones_tct = None
+        self.resumen_tct = None
+
+        if hasattr(self, "tabla_tct"):
+            for fila in self.tabla_tct.get_children():
+                self.tabla_tct.delete(fila)
+
+        for variable in [
+            self.var_tct_alumnos,
+            self.var_tct_reactivos,
+            self.var_tct_media,
+            self.var_alpha,
+            self.var_tct_p,
+            self.var_tct_rpbis,
+            self.var_tct_k
+        ]:
+            variable.set("-")
+
+        self.btn_exportar_tct.config(
+            state="disabled"
+        )
+    def exportar_resultados_tct(self):
+        if self.resultados_tct is None:
+            messagebox.showwarning(
+                "Sin resultados",
+                "Primero ejecuta el análisis TCT."
+            )
+            return
+
+        archivo = filedialog.asksaveasfilename(
+            title="Guardar análisis TCT",
+            defaultextension=".xlsx",
+            filetypes=[
+                ("Archivo Excel", "*.xlsx")
+            ]
+        )
+
+        if not archivo:
+            return
+
+        try:
+            resumen_df = pd.DataFrame({
+                "Indicador": [
+                    "Alumnos",
+                    "Reactivos",
+                    "Media de aciertos",
+                    "Alfa de Cronbach",
+                    "Media P",
+                    "Media Rpbis",
+                    "Reactivos con K"
+                ],
+                "Valor": [
+                    self.resumen_tct["alumnos"],
+                    self.resumen_tct["items"],
+                    self.resumen_tct["media_aciertos"],
+                    self.resumen_tct["alpha"],
+                    self.resumen_tct["media_p"],
+                    self.resumen_tct["media_rpbis"],
+                    ", ".join(
+                        self.resumen_tct["items_k"]
+                    )
+                ]
+            })
+
+            with pd.ExcelWriter(
+                archivo,
+                engine="openpyxl"
+            ) as writer:
+                resumen_df.to_excel(
+                    writer,
+                    sheet_name="Resumen",
+                    index=False
+                )
+
+                self.resultados_tct.to_excel(
+                    writer,
+                    sheet_name="Reactivos",
+                    index=False
+                )
+
+                self.detalle_opciones_tct.to_excel(
+                    writer,
+                    sheet_name="Opciones",
+                    index=False
+                )
+
+            messagebox.showinfo(
+                "Archivo generado",
+                f"El análisis TCT se guardó en:\n\n{archivo}"
+            )
+
+        except Exception as e:
+            messagebox.showerror(
+                "Error al exportar",
+                f"No se pudo guardar el archivo:\n\n{e}"
+            )
 
 if __name__ == "__main__":
     root = tk.Tk()
