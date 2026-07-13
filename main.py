@@ -2,6 +2,7 @@ import os
 import re
 import pandas as pd
 import tkinter as tk
+import numpy as np
 from tkinter import filedialog, messagebox, ttk
 from PyPDF2 import PdfReader
 from PIL import Image, ImageTk  # Librería para manejar imágenes PNG/JPG
@@ -111,7 +112,7 @@ class AnalizadorPsicometria:
         self.notebook.add(self.tab_tri, text=" Respuestas al Ítem (TRI) ")
 
         self.configurar_pestaña_etl()
-        self.configurar_pestaña_mantenimiento(self.tab_tct, "Módulo TCT (Reemplazo de Iteman)")
+        self.configurar_pestaña_tct(self.tab_tct, "Módulo TCT (Reemplazo de Iteman)")
         self.configurar_pestaña_mantenimiento(self.tab_tri, "Módulo TRI (Reemplazo de XCalibre)")
 
     def configurar_pestaña_etl(self):
@@ -209,6 +210,139 @@ class AnalizadorPsicometria:
         self.texto_resultado = tk.Text(frame_consola, font=("Consolas", 10), yscrollcommand=scrollbar.set)
         self.texto_resultado.pack(fill="both", expand=True)
         scrollbar.config(command=self.texto_resultado.yview)
+    
+        #==========================================Modulo Iteman==========================================
+    def configurar_pestaña_tct(self, tab, titulo_modulo):
+       #==========================================
+       #Encabezado
+       #==========================================
+        frame_encabezado = ttk.LabelFrame(
+            tab,
+            text="Analisis de Teoría Clásica (TCT)",
+            padding=15
+        )
+        frame_encabezado.pack(fill="x", padx=15, pady=10)
+        ttk.Label(
+            frame_encabezado,
+            text=titulo_modulo,
+            font=("Arial", 14, "bold"),
+        ).grid(
+            row=0, column=0, sticky="w", padx=5, pady=(0,5)
+        )
+        ttk.Label(
+            frame_encabezado,
+            text=(
+                "Calcula dificultad, discriminación, fiabilidad"
+                " y reactivos con Flag k."
+            ),
+            font=("Arial", 10),
+        ).grid(
+            row=1, column=0, columnspan=3,sticky="w", padx=5,pady=(0,10)
+        )
+        self.bntn_ejecutar_tct = ttk.Button(
+            frame_encabezado,
+            text="Ejecutar análisis TCT",
+            command=self.analizar_tct
+        )
+        self.bntn_ejecutar_tct.grid(
+            row=2, column=0, sticky="ew", padx=5, pady=5
+        )
+        self.btn_exportar_tct = ttk.Button(
+            frame_encabezado,
+            text="Exportar resultados TCT",
+            command=self.exportar_resultados_tct,
+            state="disabled"
+        )
+        self.btn_exportar_tct.grid(
+            row=2, column=1, sticky="ew", padx=5, pady=5
+        )
+        self.bt_limpiar_tct = ttk.Button(
+            frame_encabezado,
+            text="Limpiar resultados TCT",
+            command=self.limpiar_resultados_tct
+        )
+        self.bt_limpiar_tct.grid(
+            row=2, column=2, sticky="ew", padx=5, pady=5
+        )
+        frame_encabezado.columnconfigure((0, 1, 2), weight=1)
+        #==========================================
+        #Resumen general de resultados
+        #==========================================
+        frame_resumen = ttk.LabelFrame(
+            tab,
+            text="Resumen general",
+            padding=10
+        )
+        frame_resumen.pack(fill="x", padx=15, pady=5)
+        self.var_tct_alumnos = tk.StringVar(value="-")
+        self.var_tct_reactivos = tk.StringVar(value="-")
+        self.var_tct_media = tk.StringVar(value="-")
+        self.var_alpha = tk.StringVar(value="-")
+        self.var_tct_p = tk.StringVar(value="-")
+        self.var_tct_rpbis = tk.StringVar(value="-")
+        self.var_tct_k = tk.StringVar(value="-")
+
+        campos=[
+            ("Alumnos", self.var_tct_alumnos),
+            ("Reactivos", self.var_tct_reactivos),
+            ("Media de aciertos", self.var_tct_media),
+            ("Alfa de Cronbach", self.var_alpha),
+            ("Media (p)", self.var_tct_p),
+            ("Media (rpbis)", self.var_tct_rpbis),
+            ("Reactivos con Flag k", self.var_tct_k)
+        ]
+
+        for indice,(nombre, variable) in enumerate(campos):
+            fila = indice // 4
+            columna = (indice % 4) * 2 
+
+            ttk.Label(
+                frame_resumen,
+                text=f"{nombre}:",
+                font=("Arial", 9, "bold")
+            ).grid(row=fila, column=columna, sticky="e", padx=(5,2), pady=5)
+            ttk.Label(
+                frame_resumen,
+                textvariable=variable
+            ).grid(row=fila, column=columna+1, sticky="w", padx=(2,15), pady=2)
+            #==========================================
+            #Tabla de resultados TCT
+            #==========================================
+        frame_tabla = ttk.LabelFrame(
+            tab,
+            text="Resultados por reactivo",
+            padding=10
+        )
+        frame_tabla.pack(fill="both",expand=True, padx=15, pady=10)
+        columnas = ("Item", "Correcta", "n", "p", "rpbis","alpha_sin", "Flag")
+        self.tabla_tct = ttk.Treeview(
+            frame_tabla,
+            columns=columnas,
+            show="headings",
+            height=14
+        )
+        encabezados = {
+            "item": "Reactivo",
+            "correcta": "Correcta",
+            "n": "N",
+            "p": "P",
+            "rpbis": "Rpbis",
+            "alpha_sin": "Alpha sin ítem",
+            "flag": "Flag"
+        }
+        anchos = {
+            "item": 90,
+            "correcta": 75,
+            "n": 70,
+            "p": 80,
+            "rpbis": 90,
+            "alpha_sin": 110,
+            "flag": 70
+        }
+
+        for columna in columnas:
+            self.tabla_tct.heading(columna, text=encabezados.get(columna, columna))
+            self.tabla_tct.column(columna, width=anchos.get(columna, 100))
 
     def configurar_pestaña_mantenimiento(self, tab, titulo_modulo):
         frame_central = ttk.Frame(tab)
