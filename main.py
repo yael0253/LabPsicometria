@@ -6,7 +6,11 @@ import numpy as np
 from tkinter import filedialog, messagebox, ttk
 from PyPDF2 import PdfReader
 from PIL import Image, ImageTk  # Librería para manejar imágenes PNG/JPG
-
+from pestana_tct import PestanaTCT
+from pestana_tri import PestanaTRI
+from pestana_etl import PestanaETL
+from pestana_comparacion import PestanaComparacion
+from pestana_reporte import PestanaReporte
 # =====================================================================
 # 1. IMPORTS REQUERIDOS (NO REQUIEREN DESCARGA ADICIONAL)
 # =====================================================================
@@ -128,14 +132,20 @@ class AnalizadorPsicometria:
         self.tab_etl = ttk.Frame(self.notebook)
         self.tab_tct = ttk.Frame(self.notebook)
         self.tab_tri = ttk.Frame(self.notebook)
-
+        self.tab_comparacion = ttk.Frame(self.notebook)
+        self.tab_reporte = ttk.Frame(self.notebook)
+        
         self.notebook.add(self.tab_etl, text=" Preparación de Datos (ETL) ")
         self.notebook.add(self.tab_tct, text=" Teoría Clásica (TCT) ")
         self.notebook.add(self.tab_tri, text=" Respuestas al Ítem (TRI) ")
+        self.notebook.add(self.tab_comparacion, text=" Comparación (TCT vs TRI) ")
+        self.notebook.add(self.tab_reporte, text=" Dictamen Post Aplicación ")
 
-        self.configurar_pestaña_etl()
-        self.configurar_pestaña_tct(self.tab_tct, "Módulo TCT (Reemplazo de Iteman)")
-        self.configurar_pestaña_mantenimiento(self.tab_tri, "Módulo TRI (Reemplazo de XCalibre)")
+        self.pestana_etl = PestanaETL(self, self.tab_etl)
+        self.pestana_tct = PestanaTCT(self, self.tab_tct, "Modulo TCT (Teoría Clásica de los Tests)")
+        self.pestana_tri = PestanaTRI(self, self.tab_tri, "Modulo TRI (Teoría de Respuesta al Ítem)")
+        self.pestana_comparacion = PestanaComparacion(self, self.tab_comparacion)
+        self.pestana_reporte = PestanaReporte(self, self.tab_reporte)
 
         self.barra_estado = ttk.Label(
         self.root,
@@ -169,300 +179,6 @@ class AnalizadorPsicometria:
             "• Dictamen post aplicación"
         )
 
-    def configurar_pestaña_etl(self):
-        frame_acciones = ttk.LabelFrame(self.tab_etl, text=" Acciones de Carga e Integración ", padding=15)
-        frame_acciones.pack(fill="x", padx=15, pady=10)
-
-        # Botón Excel usando el icono del diccionario persistente
-        img_ex = self.referencias_imagenes.get('excel', '')
-        btn_excel = ttk.Button(frame_acciones, text=" Seleccionar archivo(s) Excel", image=img_ex, compound="left", command=self.seleccionar_archivos)
-        btn_excel.grid(row=0, column=0, padx=10, pady=5, sticky="ew")
-
-        # Botón PDF usando el icono del diccionario persistente
-        img_pf = self.referencias_imagenes.get('pdf', '')
-        btn_pdf = ttk.Button(frame_acciones, text=" Seleccionar PDF de análisis", image=img_pf, compound="left", command=self.seleccionar_pdf)
-        btn_pdf.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
-
-        btn_unir = ttk.Button(frame_acciones, text="⚙️ Leer, separar y unir datos", command=self.leer_y_separar_datos)
-        btn_unir.grid(row=0, column=2, padx=10, pady=5, sticky="ew")
-
-        btn_generar = ttk.Button(frame_acciones, text="💾 Generar CONTROL y DAT", command=self.generar_archivos_control_y_dat)
-        btn_generar.grid(row=0, column=3, padx=10, pady=5, sticky="ew")
-
-        frame_acciones.columnconfigure((0, 1, 2, 3), weight=1)
-        # ==========================================
-        # LISTA DE ARCHIVOS EXCEL CARGADOS
-        # ==========================================
-
-        frame_acciones = ttk.LabelFrame(
-        self.tab_etl,
-            text=" Archivos cargados ",
-            padding=15
-        )
-        frame_acciones.pack(fill="x", padx=15, pady=10)
-
-        self.lista_archivos = tk.Listbox(
-            frame_acciones,
-            height=6,
-            font=("Consolas", 10)
-        )
-        self.lista_archivos.grid(row=0, column=0, columnspan=4, sticky="ew", padx=10, pady=5)
-
-        scroll_archivos = ttk.Scrollbar(
-            frame_acciones,
-            orient="vertical",
-            command=self.lista_archivos.yview
-        )
-        scroll_archivos.grid(row=0, column=4, sticky="ns", pady=5)
-
-        self.lista_archivos.config(yscrollcommand=scroll_archivos.set)
-
-        #ttk.Button(
-         #   frame_acciones,
-          #  text="➕ Agregar Excel",
-           # command=self.seleccionar_archivos
-        #).grid(row=1, column=0, padx=10, pady=5, sticky="ew")
-
-        #ttk.Button(
-        #    frame_acciones,
-        #   text="➕ Agregar PDF",
-        #    command=self.seleccionar_pdf
-        #).grid(row=1, column=1, padx=10, pady=5, sticky="ew")
-
-        ttk.Button(
-            frame_acciones,
-            text="🗑 Eliminar seleccionado",
-            command=self.eliminar_archivo_seleccionado
-        ).grid(row=1, column=2, padx=10, pady=5, sticky="ew")
-
-        ttk.Button(
-            frame_acciones,
-            text="🧹 Limpiar lista",
-            command=self.limpiar_archivos
-        ).grid(row=1, column=3, padx=10, pady=5, sticky="ew")
-
-        #ttk.Button(
-        #    frame_acciones,
-        #    text="⚙️ Leer, separar y unir datos",
-        #    command=self.leer_y_separar_datos
-        #).grid(row=2, column=0, columnspan=2, padx=10, pady=8, sticky="ew")
-
-        #ttk.Button(
-        #    frame_acciones,
-        #    text="💾 Generar CONTROL y DAT",
-        #    command=self.generar_archivos_control_y_dat
-        #).grid(row=2, column=2, columnspan=2, padx=10, pady=8, sticky="ew")
-
-        frame_acciones.columnconfigure((0, 1, 2, 3), weight=1)
-
-        frame_consola = ttk.LabelFrame(self.tab_etl, text=" Consola de Resultados y Diagnóstico ", padding=10)
-        frame_consola.pack(fill="both", expand=True, padx=15, pady=10)
-
-        scrollbar = ttk.Scrollbar(frame_consola)
-        scrollbar.pack(side="right", fill="y")
-
-        self.texto_resultado = tk.Text(frame_consola, font=("Consolas", 10), yscrollcommand=scrollbar.set)
-        self.texto_resultado.pack(fill="both", expand=True)
-        scrollbar.config(command=self.texto_resultado.yview)
-    
-        #==========================================Modulo Iteman==========================================
-    def configurar_pestaña_tct(self, tab, titulo_modulo):
-       #==========================================
-       #Encabezado
-       #==========================================
-        frame_encabezado = ttk.LabelFrame(
-            tab,
-            text="Analisis de Teoría Clásica (TCT)",
-            padding=15
-        )
-        frame_encabezado.pack(fill="x", padx=15, pady=10)
-        ttk.Label(
-            frame_encabezado,
-            text=titulo_modulo,
-            font=("Arial", 14, "bold"),
-        ).grid(
-            row=0, column=0, sticky="w", padx=5, pady=(0,5)
-        )
-        ttk.Label(
-            frame_encabezado,
-            text=(
-                "Calcula dificultad, discriminación, fiabilidad"
-                " y reactivos con Flag k."
-            ),
-            font=("Arial", 10),
-        ).grid(
-            row=1, column=0, columnspan=3,sticky="w", padx=5,pady=(0,10)
-        )
-        self.bntn_ejecutar_tct = ttk.Button(
-            frame_encabezado,
-            text="Ejecutar análisis TCT",
-            command=self.analizar_tct
-        )
-        self.bntn_ejecutar_tct.grid(
-            row=2, column=0, sticky="ew", padx=5, pady=5
-        )
-        self.btn_exportar_tct = ttk.Button(
-            frame_encabezado,
-            text="Exportar resultados TCT",
-            command=self.exportar_resultados_tct,
-            state="disabled"
-        )
-        self.btn_exportar_tct.grid(
-            row=2, column=1, sticky="ew", padx=5, pady=5
-        )
-        self.bt_limpiar_tct = ttk.Button(
-            frame_encabezado,
-            text="Limpiar resultados TCT",
-            command=self.limpiar_resultados_tct
-        )
-        self.bt_limpiar_tct.grid(
-            row=2, column=2, sticky="ew", padx=5, pady=5
-        )
-        frame_encabezado.columnconfigure((0, 1, 2), weight=1)
-        #==========================================
-        #Resumen general de resultados
-        #==========================================
-        frame_resumen = ttk.LabelFrame(
-            tab,
-            text="Resumen general",
-            padding=10
-        )
-        frame_resumen.pack(fill="x", padx=15, pady=5)
-        self.var_tct_alumnos = tk.StringVar(value="-")
-        self.var_tct_reactivos = tk.StringVar(value="-")
-        self.var_tct_media = tk.StringVar(value="-")
-        self.var_alpha = tk.StringVar(value="-")
-        self.var_tct_p = tk.StringVar(value="-")
-        self.var_tct_rpbis = tk.StringVar(value="-")
-        self.var_tct_k = tk.StringVar(value="-")
-
-        campos=[
-            ("Alumnos", self.var_tct_alumnos),
-            ("Reactivos", self.var_tct_reactivos),
-            ("Media de aciertos", self.var_tct_media),
-            ("Alfa de Cronbach", self.var_alpha),
-            ("Media (p)", self.var_tct_p),
-            ("Media (rpbis)", self.var_tct_rpbis),
-            ("Reactivos con Flag k", self.var_tct_k)
-        ]
-
-        for indice,(nombre, variable) in enumerate(campos):
-            fila = indice // 4
-            columna = (indice % 4) * 2 
-
-            ttk.Label(
-                frame_resumen,
-                text=f"{nombre}:",
-                font=("Arial", 9, "bold")
-            ).grid(row=fila, column=columna, sticky="e", padx=(5,2), pady=5)
-            ttk.Label(
-                frame_resumen,
-                textvariable=variable
-            ).grid(row=fila, column=columna+1, sticky="w", padx=(2,15), pady=2)
-        #==========================================
-        #Tabla de resultados TCT
-        #==========================================
-        frame_tabla = ttk.LabelFrame(
-            tab,
-            text="Resultados por reactivo",
-            padding=10
-        )
-        frame_tabla.pack(fill="both",expand=True, padx=15, pady=10)
-        columnas = ("item", "correcta", "n", "p", "rpbis","alpha_sin", "flag")
-        self.tabla_tct = ttk.Treeview(
-            frame_tabla,
-            columns=columnas,
-            show="headings",
-            height=14
-        )
-        encabezados = {
-            "item": "Reactivo",
-            "correcta": "Correcta",
-            "n": "N",
-            "p": "P",
-            "rpbis": "Rpbis",
-            "alpha_sin": "Alpha sin ítem",
-            "flag": "Flag"
-        }
-        anchos = {
-            "item": 90,
-            "correcta": 75,
-            "n": 70,
-            "p": 80,
-            "rpbis": 90,
-            "alpha_sin": 110,
-            "flag": 70
-        }
-
-        for columna in columnas:
-            self.tabla_tct.heading(
-                columna,
-                text=encabezados[columna]
-            )
-            self.tabla_tct.column(
-                columna,
-                width=anchos[columna],
-                anchor="center"
-            )
-        scrollbar_vertical = ttk.Scrollbar(
-            frame_tabla,
-            orient="vertical",
-            command=self.tabla_tct.yview
-        )
-        scrollbar_horizontal = ttk.Scrollbar(
-            frame_tabla,
-            orient="horizontal",
-            command=self.tabla_tct.xview
-        )
-        self.tabla_tct.configure(
-            yscrollcommand=scrollbar_vertical.set,
-            xscrollcommand=scrollbar_horizontal.set
-        )
-        self.tabla_tct.grid(
-            row=0,
-            column=0,
-            sticky="nsew"
-        )
-        scrollbar_vertical.grid(
-            row=0,
-            column=1,
-            sticky="ns"
-        )
-        scrollbar_horizontal.grid(
-            row=1,
-            column=0,
-            sticky="ew"
-        )
-        frame_tabla.rowconfigure(0,weight=1)
-        frame_tabla.columnconfigure(0, weight=1)
-
-        self.tabla_tct.tag_configure(
-            "flag_k",
-            background="#FFDADA"
-        )
-
-
-    def configurar_pestaña_mantenimiento(self, tab, titulo_modulo):
-        frame_central = ttk.Frame(tab)
-        frame_central.place(relx=0.5, rely=0.5, anchor="center")
-
-        lbl_titulo = tk.Label(frame_central, text=titulo_modulo, font=("Arial", 16, "bold"), fg="#333333")
-        lbl_titulo.pack(pady=10)
-
-        # Mostrar mantenimiento de forma segura desde el diccionario persistente
-        if self.referencias_imagenes.get('mantenimiento'):
-            lbl_img = tk.Label(frame_central, image=self.referencias_imagenes['mantenimiento'])
-            lbl_img.pack(pady=10)
-        else:
-            lbl_Aviso = tk.Label(frame_central, text="⚠️", font=("Arial", 48))
-            lbl_Aviso.pack(pady=5)
-
-        lbl_msg = tk.Label(
-            frame_central, 
-            text="Módulo actualmente en fase de ingeniería.\nEstamos trabajando en la integración de algoritmos propios.", 
-            font=("Arial", 11, "italic"), fg="#666666", justify="center"
-        )
-        lbl_msg.pack(pady=10)
 
     # =====================================================================
     # Logica de seleccio de archivos
@@ -1244,6 +960,82 @@ class AnalizadorPsicometria:
                 "Error al exportar",
                 f"No se pudo guardar el archivo:\n\n{e}"
             )
+        
+    def analizar_tri(self):
+        messagebox.showinfo(
+            "Módulo TRI",
+            "El motor TRI se implementará en el siguiente paso."
+        )
+
+
+    def exportar_resultados_tri(self):
+        messagebox.showinfo(
+            "Módulo TRI",
+            "Todavía no hay resultados TRI para exportar."
+        )
+
+
+    def limpiar_resultados_tri(self):
+        if hasattr(self, "tabla_tri"):
+            for fila in self.tabla_tri.get_children():
+                self.tabla_tri.delete(fila)
+
+    def comparar_resultados(self):
+        if self.resultados_tct is None:
+            messagebox.showwarning(
+                "Sin análisis TCT",
+                "Primero ejecuta el análisis TCT."
+            )
+            return
+
+        messagebox.showinfo(
+            "Comparación",
+            "La comparación estará disponible cuando se complete el análisis TRI."
+        )
+
+
+    def aplicar_abonos(self):
+        messagebox.showinfo(
+            "Abonos",
+            "La aplicación de abonos se implementará después del módulo TRI."
+        )
+
+
+    def limpiar_comparacion(self):
+        if hasattr(self, "tabla_comparacion"):
+            for fila in self.tabla_comparacion.get_children():
+                self.tabla_comparacion.delete(fila)
+
+        self.var_comp_k_tct.set("-")
+        self.var_comp_k_tri.set("-")
+        self.var_comp_abonar.set("-")
+
+        self.btn_aplicar_abonos.config(state="disabled")
+    def mostrar_vista_previa_reporte(self):
+        self.texto_reporte.delete("1.0", tk.END)
+
+        self.texto_reporte.insert(
+            tk.END,
+            "DICTAMEN POST APLICACIÓN\n"
+            "========================================\n\n"
+            "El dictamen se completará cuando estén disponibles:\n"
+            "- Análisis TCT\n"
+            "- Análisis TRI\n"
+            "- Comparación de Flag K\n"
+            "- Resultados antes y después de los abonos\n"
+        )
+
+
+    def generar_reporte(self):
+        messagebox.showinfo(
+            "Reporte",
+            "La generación del dictamen Word se implementará después."
+        )
+
+
+    def limpiar_vista_previa_reporte(self):
+        self.texto_reporte.delete("1.0", tk.END)
+
  #Splash
 def mostrar_splash():
     splash = tk.Tk()
