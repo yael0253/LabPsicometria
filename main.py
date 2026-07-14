@@ -13,6 +13,11 @@ from PIL import Image, ImageTk  # Librería para manejar imágenes PNG/JPG
 import io
 import base64
 
+APP_NAME = "Sistema de Análisis Psicométrico (SAP)"
+APP_VERSION = "1.0.0"
+APP_AUTHORS = "Yael Siloe Martinez Vertiz & Ximena Rodriguez Andrade"
+APP_YEAR = "2026"
+
 # =====================================================================
 # 2. VARIABLES GIGANTES DE TEXTO (PEGA AQUÍ TUS CÓDIGOS BASE64)
 # =====================================================================
@@ -30,7 +35,7 @@ class AnalizadorPsicometria:
 
     def __init__(self, root):
         self.root = root
-        self.root.title("Analizador de Exámenes - Psicometría")
+        self.root.title(f"{APP_NAME}v{APP_VERSION}")
         self.root.geometry("900x700")
         
         self.style = ttk.Style()
@@ -101,6 +106,20 @@ class AnalizadorPsicometria:
 
         lbl_titulo_app = tk.Label(self.frame_banner, text="Sistema de Análisis Psicométrico", font=("Arial", 14, "italic"), fg="white", bg="#002B49")
         lbl_titulo_app.pack(pady=35, padx=20, side="right")
+        barra_menu = tk.Menu(self.root)
+
+        menu_ayuda = tk.Menu(barra_menu, tearoff=0)
+        menu_ayuda.add_command(
+            label="Acerca de",
+            command=self.mostrar_acerca_de
+        )
+
+        barra_menu.add_cascade(
+            label="Ayuda",
+            menu=menu_ayuda
+        )
+
+        self.root.config(menu=barra_menu)
 
         # Pestañas (Notebook)
         self.notebook = ttk.Notebook(self.root)
@@ -117,6 +136,38 @@ class AnalizadorPsicometria:
         self.configurar_pestaña_etl()
         self.configurar_pestaña_tct(self.tab_tct, "Módulo TCT (Reemplazo de Iteman)")
         self.configurar_pestaña_mantenimiento(self.tab_tri, "Módulo TRI (Reemplazo de XCalibre)")
+
+        self.barra_estado = ttk.Label(
+        self.root,
+            text=f"{APP_NAME}  |  Versión {APP_VERSION}",
+            anchor="e"
+        )
+        self.barra_estado.pack(fill="x", padx=10, pady=(0, 5))
+    
+    #Pestaña acerca de ..
+    def mostrar_acerca_de(self):
+        messagebox.showinfo(
+            "Acerca de",
+            f"{APP_NAME}\n"
+            f"Versión {APP_VERSION}\n\n"
+            "Desarrollado para el Laboratorio de Psicometría\n"
+            "Facultad de Medicina - UNAM\n\n"
+            f"Desarrolladores:\n{APP_AUTHORS}\n"
+            "Ingeniería en Computación\n"
+            "FES Aragón - UNAM\n\n"
+            "Funciones de esta versión:\n"
+            "• Lectura y unión de archivos Excel\n"
+            "• Lectura de reportes PDF\n"
+            "• Generación de CONTROL y DAT\n"
+            "• Análisis TCT\n"
+            "• Detección validada de Flag K\n"
+            "• Exportación de resultados\n\n"
+            "Próximamente:\n"
+            "• Análisis TRI\n"
+            "• Comparación TCT vs TRI\n"
+            "• Abonos automáticos\n"
+            "• Dictamen post aplicación"
+        )
 
     def configurar_pestaña_etl(self):
         frame_acciones = ttk.LabelFrame(self.tab_etl, text=" Acciones de Carga e Integración ", padding=15)
@@ -1193,8 +1244,67 @@ class AnalizadorPsicometria:
                 "Error al exportar",
                 f"No se pudo guardar el archivo:\n\n{e}"
             )
+ #Splash
+def mostrar_splash():
+    splash = tk.Tk()
+    splash.overrideredirect(True)
+    splash.geometry("520x280")
+
+    frame = tk.Frame(
+        splash,
+        bg="#002B49",
+        bd=2,
+        relief="solid"
+    )
+    frame.pack(fill="both", expand=True)
+
+    tk.Label(
+        frame,
+        text=APP_NAME,
+        font=("Arial", 20, "bold"),
+        bg="#002B49",
+        fg="white"
+    ).pack(pady=(55, 10))
+
+    tk.Label(
+        frame,
+        text=f"Versión {APP_VERSION}",
+        font=("Arial", 12),
+        bg="#002B49",
+        fg="white"
+    ).pack()
+
+    tk.Label(
+        frame,
+        text="Facultad de Medicina - UNAM",
+        font=("Arial", 11),
+        bg="#002B49",
+        fg="white"
+    ).pack(pady=20)
+
+    tk.Label(
+        frame,
+        text="Iniciando sistema...",
+        font=("Arial", 9, "italic"),
+        bg="#002B49",
+        fg="white"
+    ).pack()
+
+    splash.update_idletasks()
+
+    ancho = splash.winfo_width()
+    alto = splash.winfo_height()
+    x = (splash.winfo_screenwidth() - ancho) // 2
+    y = (splash.winfo_screenheight() - alto) // 2
+    splash.geometry(f"{ancho}x{alto}+{x}+{y}")
+
+    splash.after(1800, splash.destroy)
+    splash.mainloop()
+
 
 if __name__ == "__main__":
+    mostrar_splash()
+
     root = tk.Tk()
     app = AnalizadorPsicometria(root)
     root.mainloop()
