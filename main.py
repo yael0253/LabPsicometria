@@ -23,7 +23,7 @@ APP_AUTHORS = "Yael Siloe Martinez Vertiz & Ximena Rodriguez Andrade"
 APP_YEAR = "2026"
 
 # =====================================================================
-# 2. VARIABLES GIGANTES DE TEXTO (PEGA AQUÍ TUS CÓDIGOS BASE64)
+# 2. VARIABLES GIGANTES DE TEXTO 
 # =====================================================================
 
 #TEXTO DE LOS ICONOS EN BASE64 PARA INCLUIRLOS DIRECTAMENTE EN EL CÓDIGOPARA EVITAR ERRORES DE RUTAS O FALTANTES DE ARCHIVOS DE IMAGEN
