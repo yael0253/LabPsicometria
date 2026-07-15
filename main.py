@@ -11,6 +11,7 @@ from pestana_tri import PestanaTRI
 from pestana_etl import PestanaETL
 from pestana_comparacion import PestanaComparacion
 from pestana_reporte import PestanaReporte
+from motor_tri import MotorTRI
 # =====================================================================
 # 1. IMPORTS REQUERIDOS (NO REQUIEREN DESCARGA ADICIONAL)
 # =====================================================================
@@ -65,6 +66,13 @@ class AnalizadorPsicometria:
         
         # 2. Dibujamos la interfaz
         self.crear_interfaz()
+
+        #2. Motor de funcionamiento de TRI
+        self.motor_tri = MotorTRI()
+
+        self.resultados_tri = None
+        self.detalle_opciones_tri = None
+        self.resumen_tri = None
 
     def cargar_recursos_imagenes(self):
         """Convierte las cadenas Base64 en imágenes de Tkinter y las blinda en un diccionario de clase."""
@@ -962,10 +970,100 @@ class AnalizadorPsicometria:
             )
         
     def analizar_tri(self):
-        messagebox.showinfo(
-            "Módulo TRI",
-            "El motor TRI se implementará en el siguiente paso."
+        if (
+            self.respuestas_alumnos is None
+            or self.respuestas_correctas is None
+        ):
+            messagebox.showwarning(
+                "Datos no disponibles",
+                "Primero debes cargar y unir los datos en ETL."
+            )
+            return
+
+        try:
+            (
+                self.resultados_tri,
+                self.detalle_opciones_tri,
+                self.resumen_tri
+            ) = self.motor_tri.analizar(
+                self.respuestas_alumnos,
+                self.respuestas_correctas
+            )
+
+            self.mostrar_resultados_tri()
+
+            self.btn_exportar_tri.config(
+                state="normal"
+            )
+
+            messagebox.showinfo(
+                "Análisis TRI terminado",
+                f"Se analizaron "
+                f"{self.resumen_tri['reactivos']} reactivos.\n"
+                f"Reactivos con Flag K: "
+                f"{len(self.resumen_tri['items_k'])}"
+            )
+
+        except Exception as e:
+            messagebox.showerror(
+                "Error en análisis TRI",
+                f"No se pudo completar el análisis:\n\n{e}"
+            )
+    def mostrar_resultados_tri(self):
+        for fila in self.tabla_tri.get_children():
+            self.tabla_tri.delete(fila)
+
+        if self.resultados_tri is None:
+            return
+
+        for _, fila in self.resultados_tri.iterrows():
+            tiene_k = "K" in [
+                flag.strip()
+                for flag in str(fila["Flag"]).split(",")
+            ]
+
+            etiqueta = "flag_k" if tiene_k else ""
+
+            self.tabla_tri.insert(
+                "",
+                tk.END,
+                values=(
+                    fila["Item"],
+                    fila["Correcta"],
+                    f"{fila['P']:.3f}",
+                    f"{fila['R']:.3f}",
+                    f"{fila['a']:.3f}",
+                    f"{fila['b']:.3f}",
+                    f"{fila['c']:.3f}",
+                    fila["Flag"]
+                ),
+                tags=(etiqueta,)
+            )
+
+        resumen = self.resumen_tri
+
+        self.var_tri_alumnos.set(
+            str(resumen["alumnos"])
         )
+        self.var_tri_reactivos.set(
+            str(resumen["reactivos"])
+        )
+        self.var_tri_media_a.set(
+            f"{resumen['media_a']:.3f}"
+        )
+        self.var_tri_media_b.set(
+            f"{resumen['media_b']:.3f}"
+        )
+        self.var_tri_media_c.set(
+            f"{resumen['media_c']:.3f}"
+        )
+
+        if resumen["items_k"]:
+            self.var_tri_k.set(
+                ", ".join(resumen["items_k"])
+            )
+        else:
+            self.var_tri_k.set("Ninguno")
 
 
     def exportar_resultados_tri(self):
