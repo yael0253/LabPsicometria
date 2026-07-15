@@ -20,7 +20,7 @@ import base64
 
 APP_NAME = "Sistema de Análisis Psicométrico (SAP)"
 APP_VERSION = "1.0.0"
-APP_AUTHORS = "Yael Siloe Martinez Vertiz & Ximena Rodriguez Andrade"
+APP_AUTHORS = "Yael Siloe Martinez Vertiz.\n"  "Ximena Rodriguez Andrade.\n"  "Joshua Alexis Fuentes Rosales."
 APP_YEAR = "2026"
 
 # =====================================================================
