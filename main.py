@@ -3,9 +3,12 @@ import re
 import pandas as pd
 import tkinter as tk
 import numpy as np
+from datetime import datetime
 from tkinter import filedialog, messagebox, ttk
 from PyPDF2 import PdfReader
 from PIL import Image, ImageTk  # Librería para manejar imágenes PNG/JPG
+from docx import Document
+from docx.shared import Pt
 from pestana_tct import PestanaTCT
 from pestana_tri import PestanaTRI
 from pestana_etl import PestanaETL
@@ -73,6 +76,11 @@ class AnalizadorPsicometria:
         self.resultados_tri = None
         self.detalle_opciones_tri = None
         self.resumen_tri = None
+
+        # 3. Estado de comparación TCT vs TRI y abonos
+        self.resultados_comparacion = None
+        self.resultados_abonos = None
+        self.resumen_abonos = None
 
     def cargar_recursos_imagenes(self):
         """Convierte las cadenas Base64 en imágenes de Tkinter y las blinda en un diccionario de clase."""
@@ -178,13 +186,14 @@ class AnalizadorPsicometria:
             "• Lectura de reportes PDF\n"
             "• Generación de CONTROL y DAT\n"
             "• Análisis TCT\n"
+            "• Análisis TRI (estimación provisional)\n"
             "• Detección validada de Flag K\n"
+            "• Comparación TCT vs TRI y abonos\n"
+            "• Dictamen post aplicación (Word)\n"
             "• Exportación de resultados\n\n"
             "Próximamente:\n"
-            "• Análisis TRI\n"
-            "• Comparación TCT vs TRI\n"
-            "• Abonos automáticos\n"
-            "• Dictamen post aplicación"
+            "• Estimación TRI 3PL completa (tipo XCalibre)\n"
+            "• Análisis de diagnóstico cognitivo (matriz Q)"
         )
 
 
@@ -800,6 +809,10 @@ class AnalizadorPsicometria:
                 state="normal"
             )
 
+            self.btn_generar_reporte.config(
+                state="normal"
+            )
+
             messagebox.showinfo(
                 "Análisis TCT terminado",
                 f"Se analizaron {respuestas.shape[1]} reactivos.\n"
@@ -893,6 +906,11 @@ class AnalizadorPsicometria:
         self.btn_exportar_tct.config(
             state="disabled"
         )
+
+        if hasattr(self, "btn_generar_reporte"):
+            self.btn_generar_reporte.config(
+                state="disabled"
+            )
     def exportar_resultados_tct(self):
         if self.resultados_tct is None:
             messagebox.showwarning(
@@ -1067,10 +1085,78 @@ class AnalizadorPsicometria:
 
 
     def exportar_resultados_tri(self):
-        messagebox.showinfo(
-            "Módulo TRI",
-            "Todavía no hay resultados TRI para exportar."
+        if self.resultados_tri is None:
+            messagebox.showwarning(
+                "Sin resultados",
+                "Primero ejecuta el análisis TRI."
+            )
+            return
+
+        archivo = filedialog.asksaveasfilename(
+            title="Guardar matriz TRI (tipo XCalibre)",
+            defaultextension=".xlsx",
+            filetypes=[
+                ("Archivo Excel", "*.xlsx")
+            ]
         )
+
+        if not archivo:
+            return
+
+        try:
+            resumen_df = pd.DataFrame({
+                "Indicador": [
+                    "Alumnos",
+                    "Reactivos",
+                    "Media a (discriminación)",
+                    "Media b (dificultad)",
+                    "Media c (adivinación)",
+                    "Reactivos con Flag K"
+                ],
+                "Valor": [
+                    self.resumen_tri["alumnos"],
+                    self.resumen_tri["reactivos"],
+                    self.resumen_tri["media_a"],
+                    self.resumen_tri["media_b"],
+                    self.resumen_tri["media_c"],
+                    ", ".join(
+                        self.resumen_tri["items_k"]
+                    ) if self.resumen_tri["items_k"] else "Ninguno"
+                ]
+            })
+
+            with pd.ExcelWriter(
+                archivo,
+                engine="openpyxl"
+            ) as writer:
+                resumen_df.to_excel(
+                    writer,
+                    sheet_name="Resumen",
+                    index=False
+                )
+
+                self.resultados_tri.to_excel(
+                    writer,
+                    sheet_name="Matriz_Reactivos",
+                    index=False
+                )
+
+                self.detalle_opciones_tri.to_excel(
+                    writer,
+                    sheet_name="Opciones",
+                    index=False
+                )
+
+            messagebox.showinfo(
+                "Archivo generado",
+                f"La matriz TRI se guardó en:\n\n{archivo}"
+            )
+
+        except Exception as e:
+            messagebox.showerror(
+                "Error al exportar",
+                f"No se pudo guardar el archivo:\n\n{e}"
+            )
 
 
     def limpiar_resultados_tri(self):
@@ -1086,50 +1172,384 @@ class AnalizadorPsicometria:
             )
             return
 
-        messagebox.showinfo(
-            "Comparación",
-            "La comparación estará disponible cuando se complete el análisis TRI."
-        )
+        if self.resultados_tri is None:
+            messagebox.showwarning(
+                "Sin análisis TRI",
+                "Primero ejecuta el análisis TRI."
+            )
+            return
 
+        try:
+            tct_por_item = self.resultados_tct.set_index("Item")
+            tri_por_item = self.resultados_tri.set_index("Item")
+
+            items = self.resultados_tct["Item"].tolist()
+            filas_comparacion = []
+
+            for item in items:
+                k_tct = (
+                    item in tct_por_item.index
+                    and tct_por_item.loc[item, "Flag"] == "K"
+                )
+
+                flags_tri = (
+                    tri_por_item.loc[item, "Flag"]
+                    if item in tri_por_item.index
+                    else ""
+                )
+                k_tri = "K" in [
+                    flag.strip()
+                    for flag in str(flags_tri).split(",")
+                ]
+
+                coincide = k_tct and k_tri
+
+                filas_comparacion.append({
+                    "Item": item,
+                    "K_TCT": k_tct,
+                    "K_TRI": k_tri,
+                    "Coincide": coincide,
+                    "Abonar": coincide
+                })
+
+            self.resultados_comparacion = pd.DataFrame(
+                filas_comparacion
+            )
+
+            self.mostrar_resultados_comparacion()
+
+            n_tct = int(self.resultados_comparacion["K_TCT"].sum())
+            n_tri = int(self.resultados_comparacion["K_TRI"].sum())
+            n_abonar = int(self.resultados_comparacion["Abonar"].sum())
+
+            self.var_comp_k_tct.set(str(n_tct))
+            self.var_comp_k_tri.set(str(n_tri))
+            self.var_comp_abonar.set(str(n_abonar))
+
+            self.btn_aplicar_abonos.config(
+                state="normal" if n_abonar > 0 else "disabled"
+            )
+
+            messagebox.showinfo(
+                "Comparación completada",
+                f"Reactivos con Flag K en TCT: {n_tct}\n"
+                f"Reactivos con Flag K en TRI: {n_tri}\n"
+                f"Reactivos que coinciden en ambos dictámenes "
+                f"(candidatos a abonar): {n_abonar}"
+            )
+
+        except Exception as e:
+            messagebox.showerror(
+                "Error en comparación",
+                f"No se pudo completar la comparación:\n\n{e}"
+            )
+
+    def mostrar_resultados_comparacion(self):
+        for fila in self.tabla_comparacion.get_children():
+            self.tabla_comparacion.delete(fila)
+
+        if self.resultados_comparacion is None:
+            return
+
+        def texto_bool(valor):
+            return "Sí" if valor else "No"
+
+        for _, fila in self.resultados_comparacion.iterrows():
+            etiqueta = "abonar" if fila["Abonar"] else ""
+
+            self.tabla_comparacion.insert(
+                "",
+                tk.END,
+                values=(
+                    fila["Item"],
+                    texto_bool(fila["K_TCT"]),
+                    texto_bool(fila["K_TRI"]),
+                    texto_bool(fila["Coincide"]),
+                    texto_bool(fila["Abonar"])
+                ),
+                tags=(etiqueta,)
+            )
 
     def aplicar_abonos(self):
-        messagebox.showinfo(
-            "Abonos",
-            "La aplicación de abonos se implementará después del módulo TRI."
-        )
+        if self.resultados_comparacion is None:
+            messagebox.showwarning(
+                "Sin comparación",
+                "Primero ejecuta la comparación de resultados."
+            )
+            return
 
+        items_abonar = self.resultados_comparacion.loc[
+            self.resultados_comparacion["Abonar"], "Item"
+        ].tolist()
+
+        if not items_abonar:
+            messagebox.showinfo(
+                "Abonos",
+                "No hay reactivos que coincidan en ambos "
+                "dictámenes para abonar."
+            )
+            return
+
+        try:
+            respuestas = (
+                self.respuestas_alumnos
+                .copy()
+                .fillna("0")
+                .astype(str)
+                .apply(lambda columna: columna.str.strip().str.upper())
+            )
+            correctas = (
+                self.respuestas_correctas
+                .reset_index(drop=True)
+                .fillna("0")
+                .astype(str)
+                .str.strip()
+                .str.upper()
+            )
+
+            matriz_original = pd.DataFrame(index=respuestas.index)
+            for indice, columna in enumerate(respuestas.columns):
+                respuesta_correcta = correctas.iloc[indice]
+                matriz_original[columna] = (
+                    respuestas[columna] == respuesta_correcta
+                ).astype(int)
+
+            matriz_abonada = matriz_original.copy()
+            columnas_por_item = dict(
+                zip(items_abonar, [
+                    respuestas.columns[int(item.replace("ITEM", "")) - 1]
+                    for item in items_abonar
+                ])
+            )
+
+            for columna in columnas_por_item.values():
+                matriz_abonada[columna] = 1
+
+            puntaje_antes = matriz_original.sum(axis=1)
+            puntaje_despues = matriz_abonada.sum(axis=1)
+
+            self.resultados_abonos = pd.DataFrame({
+                "CUENTA": self.cuentas.reset_index(drop=True),
+                "Puntaje_antes": puntaje_antes,
+                "Puntaje_despues": puntaje_despues,
+                "Diferencia": puntaje_despues - puntaje_antes
+            })
+
+            self.resumen_abonos = {
+                "items_abonados": items_abonar,
+                "alumnos": len(respuestas),
+                "media_antes": float(puntaje_antes.mean()),
+                "media_despues": float(puntaje_despues.mean()),
+                "alumnos_beneficiados": int(
+                    (puntaje_despues > puntaje_antes).sum()
+                )
+            }
+
+            self.btn_generar_reporte.config(state="normal")
+
+            messagebox.showinfo(
+                "Abonos aplicados",
+                f"Se abonaron {len(items_abonar)} reactivo(s): "
+                f"{', '.join(items_abonar)}\n\n"
+                f"Media antes del abono: "
+                f"{self.resumen_abonos['media_antes']:.2f}\n"
+                f"Media después del abono: "
+                f"{self.resumen_abonos['media_despues']:.2f}\n"
+                f"Alumnos beneficiados: "
+                f"{self.resumen_abonos['alumnos_beneficiados']}"
+            )
+
+        except Exception as e:
+            messagebox.showerror(
+                "Error al aplicar abonos",
+                f"No se pudieron aplicar los abonos:\n\n{e}"
+            )
 
     def limpiar_comparacion(self):
         if hasattr(self, "tabla_comparacion"):
             for fila in self.tabla_comparacion.get_children():
                 self.tabla_comparacion.delete(fila)
 
+        self.resultados_comparacion = None
+        self.resultados_abonos = None
+        self.resumen_abonos = None
+
         self.var_comp_k_tct.set("-")
         self.var_comp_k_tri.set("-")
         self.var_comp_abonar.set("-")
 
         self.btn_aplicar_abonos.config(state="disabled")
+        self.btn_generar_reporte.config(state="disabled")
+    def construir_secciones_dictamen(self):
+        """
+        Arma el contenido del dictamen post aplicación a partir de los
+        resultados disponibles (TCT, TRI, comparación y abonos).
+
+        Devuelve una lista de tuplas (titulo, lineas) para reutilizarse
+        tanto en la vista previa (Text) como en el documento Word.
+        """
+        secciones = []
+
+        secciones.append((
+            "DICTAMEN POST APLICACIÓN",
+            [
+                f"Fecha de generación: "
+                f"{datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                f"Sistema: {APP_NAME}  |  Versión {APP_VERSION}"
+            ]
+        ))
+
+        if self.resultados_tct is None:
+            secciones.append((
+                "Estado",
+                [
+                    "Todavía no hay análisis TCT disponible. "
+                    "Ejecuta primero la pestaña de Teoría Clásica (TCT)."
+                ]
+            ))
+            return secciones
+
+        r = self.resumen_tct
+        lineas_tct = [
+            f"Alumnos evaluados: {r['alumnos']}",
+            f"Reactivos analizados: {r['items']}",
+            f"Media de aciertos: {r['media_aciertos']:.2f}",
+            f"Alfa de Cronbach: {r['alpha']:.3f}",
+            f"Media de dificultad (P): {r['media_p']:.3f}",
+            f"Media de discriminación (Rpbis): {r['media_rpbis']:.3f}",
+            "Reactivos con Flag K (TCT): " + (
+                ", ".join(r["items_k"]) if r["items_k"] else "Ninguno"
+            )
+        ]
+        secciones.append(("Resultados Teoría Clásica de los Tests (TCT)", lineas_tct))
+
+        if self.resumen_tri is not None:
+            rt = self.resumen_tri
+            lineas_tri = [
+                f"Alumnos evaluados: {rt['alumnos']}",
+                f"Reactivos analizados: {rt['reactivos']}",
+                f"Media de discriminación (a): {rt['media_a']:.3f}",
+                f"Media de dificultad (b): {rt['media_b']:.3f}",
+                f"Media de adivinación (c): {rt['media_c']:.3f}",
+                "Reactivos con Flag K (TRI): " + (
+                    ", ".join(rt["items_k"]) if rt["items_k"] else "Ninguno"
+                )
+            ]
+            secciones.append((
+                "Resultados Teoría de Respuesta al Ítem (TRI)",
+                lineas_tri
+            ))
+        else:
+            secciones.append((
+                "Resultados Teoría de Respuesta al Ítem (TRI)",
+                ["Análisis TRI no ejecutado todavía."]
+            ))
+
+        if self.resultados_comparacion is not None:
+            comp = self.resultados_comparacion
+            abonables = comp.loc[comp["Abonar"], "Item"].tolist()
+            lineas_comp = [
+                f"Reactivos con Flag K en TCT: "
+                f"{int(comp['K_TCT'].sum())}",
+                f"Reactivos con Flag K en TRI: "
+                f"{int(comp['K_TRI'].sum())}",
+                "Reactivos que coinciden en ambos dictámenes: " + (
+                    ", ".join(abonables) if abonables else "Ninguno"
+                )
+            ]
+            secciones.append((
+                "Comparación TCT vs TRI",
+                lineas_comp
+            ))
+        else:
+            secciones.append((
+                "Comparación TCT vs TRI",
+                ["Comparación no ejecutada todavía."]
+            ))
+
+        if self.resumen_abonos is not None:
+            ra = self.resumen_abonos
+            lineas_abonos = [
+                "Reactivos abonados: " + ", ".join(ra["items_abonados"]),
+                f"Alumnos evaluados: {ra['alumnos']}",
+                f"Media antes del abono: {ra['media_antes']:.2f}",
+                f"Media después del abono: {ra['media_despues']:.2f}",
+                f"Alumnos beneficiados por el abono: "
+                f"{ra['alumnos_beneficiados']}"
+            ]
+            secciones.append((
+                "Resultados antes y después del abono",
+                lineas_abonos
+            ))
+        else:
+            secciones.append((
+                "Resultados antes y después del abono",
+                ["No se han aplicado abonos todavía."]
+            ))
+
+        return secciones
+
     def mostrar_vista_previa_reporte(self):
         self.texto_reporte.delete("1.0", tk.END)
 
-        self.texto_reporte.insert(
-            tk.END,
-            "DICTAMEN POST APLICACIÓN\n"
-            "========================================\n\n"
-            "El dictamen se completará cuando estén disponibles:\n"
-            "- Análisis TCT\n"
-            "- Análisis TRI\n"
-            "- Comparación de Flag K\n"
-            "- Resultados antes y después de los abonos\n"
-        )
+        secciones = self.construir_secciones_dictamen()
 
+        for titulo, lineas in secciones:
+            self.texto_reporte.insert(tk.END, f"{titulo}\n")
+            self.texto_reporte.insert(tk.END, "=" * 60 + "\n")
+            for linea in lineas:
+                self.texto_reporte.insert(tk.END, f"{linea}\n")
+            self.texto_reporte.insert(tk.END, "\n")
 
     def generar_reporte(self):
-        messagebox.showinfo(
-            "Reporte",
-            "La generación del dictamen Word se implementará después."
+        if self.resultados_tct is None:
+            messagebox.showwarning(
+                "Sin datos",
+                "Primero ejecuta al menos el análisis TCT."
+            )
+            return
+
+        archivo = filedialog.asksaveasfilename(
+            title="Guardar dictamen post aplicación",
+            defaultextension=".docx",
+            filetypes=[
+                ("Documento Word", "*.docx")
+            ]
         )
 
+        if not archivo:
+            return
+
+        try:
+            secciones = self.construir_secciones_dictamen()
+
+            documento = Document()
+
+            titulo, lineas_titulo = secciones[0]
+            encabezado = documento.add_heading(titulo, level=0)
+            for linea in lineas_titulo:
+                parrafo = documento.add_paragraph(linea)
+                parrafo.runs[0].font.size = Pt(10)
+
+            for titulo_seccion, lineas in secciones[1:]:
+                documento.add_heading(titulo_seccion, level=1)
+                for linea in lineas:
+                    documento.add_paragraph(linea, style="List Bullet")
+
+            documento.save(archivo)
+
+            self.mostrar_vista_previa_reporte()
+
+            messagebox.showinfo(
+                "Dictamen generado",
+                f"El dictamen se guardó en:\n\n{archivo}"
+            )
+
+        except Exception as e:
+            messagebox.showerror(
+                "Error al generar el dictamen",
+                f"No se pudo generar el documento:\n\n{e}"
+            )
 
     def limpiar_vista_previa_reporte(self):
         self.texto_reporte.delete("1.0", tk.END)
