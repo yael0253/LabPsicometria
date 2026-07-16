@@ -191,9 +191,7 @@ class AnalizadorPsicometria:
             "• Comparación TCT vs TRI y abonos\n"
             "• Dictamen post aplicación (Word)\n"
             "• Exportación de resultados\n\n"
-            "Próximamente:\n"
-            "• Estimación TRI 3PL completa (tipo XCalibre)\n"
-            "• Análisis de diagnóstico cognitivo (matriz Q)"
+
         )
 
 
