@@ -211,9 +211,11 @@ class AnalizadorPsicometria:
             "FES Aragón - UNAM\n\n"
             "Funciones de esta versión:\n"
             "• Lectura y unión de archivos Excel\n"
-            "• Lectura de reportes PDF\n"
+            "• Lectura de reportes PDF \n"
+            "• Lectura de temas(Falta entrenar mas el algoritmo con diferentes bases)\n"
             "• Generación de CONTROL y DAT\n"
             "• Análisis TCT\n"
+            "• Alfa de Cronbach\n"
             "• Detección validada de Flag K\n"
             "• Exportación de resultados\n\n"
             "Próximamente:\n"
@@ -446,14 +448,12 @@ class AnalizadorPsicometria:
                 print(f"Error en página {num_pagina}: {e}")
         return opciones_por_item
         
-    
     def leer_pdf_temas(self, total_preguntas_esperadas=None):
         if not self.archivo_pdf:
             return []
 
         reader = PdfReader(self.archivo_pdf)
         temas_detectados = []
-
         leyendo_tabla_temas = False
 
         for num_pagina, pagina in enumerate(reader.pages, start=1):
@@ -463,7 +463,9 @@ class AnalizadorPsicometria:
                 if not texto:
                     continue
 
-                texto = " ".join(texto.replace("\n", " ").split())
+                texto = " ".join(
+                    texto.replace("\n", " ").split()
+                )
 
                 if "Tema" in texto and "Reactivos" in texto:
                     leyendo_tabla_temas = True
@@ -472,29 +474,134 @@ class AnalizadorPsicometria:
                     continue
 
                 if "rpbis Promedio" in texto:
-                    texto = texto.split("rpbis Promedio", 1)[1]
+                    texto = texto.split(
+                        "rpbis Promedio",
+                        1
+                    )[1]
 
                 if "Reactivos por dificultad" in texto:
-                    texto = texto.split("Reactivos por dificultad", 1)[0]
-                    leyendo_tabla_temas = False
-                print("\n================ TEXTO DE LA TABLA ================\n")
-                print(texto)
-                print("\n===================================================\n")
+                    texto = texto.split(
+                        "Reactivos por dificultad",
+                        1
+                    )[0]
 
-                resultados = re.findall(
-                    r"([A-Za-zÁÉÍÓÚÑÜáéíóúñü0-9 ,().:]+?)(\d{1,2})(?=0\.\d{3})0\.\d{3}0\.\d{3}",
-                   texto
+                    leyendo_tabla_temas = False
+
+                print(
+                    "\n================ TEXTO DE LA TABLA "
+                    "================\n"
                 )
+                print(texto)
+                print(
+                    "\n=================================="
+                    "=================\n"
+                )
+
+                resultados = []
+
+                # =====================================================
+                # 1. TABLAS CON TEMAS NUMERADOS
+                #
+                # Ejemplo:
+                # 1. Introducción...10.619-0.048
+                # 2. El estudio...100.7100.288
+                # =====================================================
+
+                bloques_numerados = re.split(
+                    r"(?=\d{1,2}\.\s*)",
+                    texto
+                )
+
+                resultados_numerados = []
+
+                for bloque in bloques_numerados:
+                    bloque = bloque.strip()
+
+                    if not bloque:
+                        continue
+
+                    coincidencia = re.match(
+                        r"^\d{1,2}\.\s*"       # Número del tema
+                        r"(.*?)"               # Nombre del tema
+                        r"(\d{1,2})"           # Reactivos
+                        r"(0\.\d{3})"          # p promedio
+                        r"(-?0\.\d{3}|nan)$",  # rpbis
+                        bloque,
+                        flags=re.IGNORECASE
+                    )
+
+                    if coincidencia:
+                        tema = coincidencia.group(1).strip()
+                        cantidad = coincidencia.group(2)
+
+                        resultados_numerados.append(
+                            (tema, cantidad)
+                        )
+
+                if resultados_numerados:
+                    resultados.extend(resultados_numerados)
+
+                else:
+                    # =================================================
+                    # 2. CASO ESPECIAL IBC
+                    #
+                    # Unidad 113 -> Unidad 1, 13 reactivos
+                    # Unidad 212 -> Unidad 2, 12 reactivos
+                    # =================================================
+
+                    patron_unidades = (
+                        r"(IBC\s+II\s*-\s*Unidad\s+\d)"
+                        r"(\d{1,2})"
+                        r"(?=0\.\d{3})"
+                        r"0\.\d{3}"
+                        r"(?:-?0\.\d{3}|nan)"
+                    )
+
+                    resultados_unidades = re.findall(
+                        patron_unidades,
+                        texto,
+                        flags=re.IGNORECASE
+                    )
+
+                    resultados.extend(resultados_unidades)
+
+                    texto_restante = re.sub(
+                        patron_unidades,
+                        " ",
+                        texto,
+                        flags=re.IGNORECASE
+                    )
+
+                    # =============================================
+                    # 3. FORMATO GENERAL SIN NUMERACIÓN
+                    # =============================================
+
+                    resultados_normales = re.findall(
+                        r"([A-Za-zÁÉÍÓÚÑÜáéíóúñü0-9 ,().:\-]+?)"
+                        r"(\d{1,2})"
+                        r"(?=0\.\d{3})"
+                        r"0\.\d{3}"
+                        r"(?:-?0\.\d{3}|nan)",
+                        texto_restante,
+                        flags=re.IGNORECASE
+                    )
+
+                    resultados.extend(resultados_normales)
+
+                # =====================================================
+                # LIMPIEZA Y VALIDACIÓN
+                # =====================================================
 
                 for tema, cantidad_texto in resultados:
                     tema = re.sub(
-                        r"[^A-ZÁÉÍÓÚÑÜa-záéíóúñü ,]",
+                        r"[^A-ZÁÉÍÓÚÑÜa-záéíóúñü0-9 ,().:\-]",
                         "",
                         tema.strip()
                     ).strip().upper()
-                    # Quitar numeración inicial del tema:
-                    # 01 Tema...
-                    # 10. Tema...
+
+                    # Quitar numeración inicial por seguridad:
+                    # 1. Tema
+                    # 10. Tema
                     tema = re.sub(
                         r"^\d{1,2}\.?\s*",
                         "",
@@ -505,41 +612,67 @@ class AnalizadorPsicometria:
                         continue
 
                     palabras_invalidas = [
-                        "RESUMEN", "REACTIVOS", "PROMEDIO", "ASISTENTES",
-                        "CALIFICACIÓN", "FIABILIDAD", "DIFICULTAD",
+                        "RESUMEN",
+                        "REACTIVOS",
+                        "PROMEDIO",
+                        "ASISTENTES",
+                        "CALIFICACIÓN",
+                        "FIABILIDAD",
+                        "DIFICULTAD",
                         "DISCRIMINACIÓN"
                     ]
 
-                    if tema.strip() == "TEMA":
+                    if tema == "TEMA":
                         continue
 
-                    if any(x in tema for x in palabras_invalidas):
+                    if any(
+                        palabra in tema
+                        for palabra in palabras_invalidas
+                    ):
                         continue
 
-                    cantidad = int(cantidad_texto)
+                    try:
+                        cantidad = int(cantidad_texto)
+                    except ValueError:
+                        continue
 
                     if cantidad < 1 or cantidad > 50:
                         continue
 
-                    temas_detectados.append((tema, cantidad))
-                    print(f"TEMA DETECTADO: {tema} -> {cantidad}")
+                    temas_detectados.append(
+                        (tema, cantidad)
+                    )
+
+                    print(
+                        f"TEMA DETECTADO: "
+                        f"{tema} -> {cantidad}"
+                    )
 
             except Exception as e:
-                print("Error leyendo temas:", e)
+                print(
+                    f"Error leyendo temas en página "
+                    f"{num_pagina}: {e}"
+                )
 
         temas_expandido = []
 
         for tema, cantidad in temas_detectados:
-            for _ in range(cantidad):
-                temas_expandido.append(tema)
+            temas_expandido.extend(
+                [tema] * cantidad
+            )
 
-        print("TOTAL TEMAS EXPANDIDOS:", len(temas_expandido))
+        print(
+            "TOTAL TEMAS EXPANDIDOS:",
+            len(temas_expandido)
+        )
 
         if total_preguntas_esperadas is not None:
-            temas_expandido = temas_expandido[:total_preguntas_esperadas]
+            temas_expandido = temas_expandido[
+                :total_preguntas_esperadas
+            ]
 
         return temas_expandido
-       
+    
     def leer_y_separar_datos(self):
         if not self.archivos_excel:
             messagebox.showwarning("Aviso", "Primero selecciona uno o más archivos Excel.")
