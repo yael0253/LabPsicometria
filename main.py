@@ -48,36 +48,11 @@ class AnalizadorPsicometria:
 
     def __init__(self, root):
         self.root = root
-        self.root.title(f"{APP_NAME}v{APP_VERSION}")
+
+        self.root.title(f"{APP_NAME} v{APP_VERSION}")
         self.root.geometry("900x700")
-        try:
-            ruta_ico = ruta_recurso(
-                os.path.join("iconos", "sap.ico")
-            )
 
-            ruta_png = ruta_recurso(
-                os.path.join("iconos", "sap.png")
-            )
-
-            # Ícono clásico de Windows
-            self.root.iconbitmap(
-                default=ruta_ico
-            )
-
-            # Ícono de Tkinter para ventana y barra de tareas
-            self.icono_ventana = tk.PhotoImage(
-                file=ruta_png
-            )
-
-            self.root.iconphoto(
-                True,
-                self.icono_ventana
-            )
-
-            print("Íconos cargados correctamente")
-
-        except Exception as e:
-            print(f"Error cargando íconos: {e}")
+        self.aplicar_icono_ventana()
             
         self.style = ttk.Style()
         self.style.theme_use("clam")
@@ -109,6 +84,31 @@ class AnalizadorPsicometria:
         self.resultados_tri = None
         self.detalle_opciones_tri = None
         self.resumen_tri = None
+
+    def aplicar_icono_ventana(self):
+        try:
+            ruta_png = ruta_recurso(
+                os.path.join("iconos", "sap.png")
+            )
+
+            ruta_ico = ruta_recurso(
+                os.path.join("iconos", "sap.ico")
+            )
+
+            self.icono_ventana = tk.PhotoImage(file=ruta_png)
+
+            self.root.iconphoto(
+                True,
+                self.icono_ventana
+            )
+
+            self.root.iconbitmap(
+                default=ruta_ico
+            )
+
+            self.root.update_idletasks()  # Asegura que los cambios se apliquen inmediatamente
+        except Exception as e:
+            print(f"Error aplicando icono a la ventana: {e}")
 
     def cargar_recursos_imagenes(self):
         """Convierte las cadenas Base64 en imágenes de Tkinter y las blinda en un diccionario de clase."""
@@ -1171,10 +1171,15 @@ class AnalizadorPsicometria:
         self.texto_reporte.delete("1.0", tk.END)
 
  #Splash
-def mostrar_splash():
-    splash = tk.Tk()
+def mostrar_splash(root):
+    splash = tk.Toplevel(root)
     splash.overrideredirect(True)
     splash.geometry("520x280")
+    splash.configure(bg="#002B49")
+
+    # Mantenerlo al frente
+    splash.attributes("-topmost", True)
+    splash.lift()
 
     frame = tk.Frame(
         splash,
@@ -1186,27 +1191,39 @@ def mostrar_splash():
 
     tk.Label(
         frame,
-        text=APP_NAME,
-        font=("Arial", 20, "bold"),
+        text="SAP",
+        font=("Arial", 24, "bold"),
         bg="#002B49",
         fg="white"
-    ).pack(pady=(55, 10))
+    ).pack(pady=(45, 5))
 
     tk.Label(
         frame,
-        text=f"Versión {APP_VERSION}",
-        font=("Arial", 12),
+        text="Sistema de Análisis Psicométrico",
+        font=("Arial", 16),
         bg="#002B49",
         fg="white"
     ).pack()
 
     tk.Label(
         frame,
-        text="Facultad de Medicina - UNAM",
+        text=f"Versión {APP_VERSION}",
         font=("Arial", 11),
         bg="#002B49",
         fg="white"
-    ).pack(pady=20)
+    ).pack(pady=10)
+
+    tk.Label(
+        frame,
+        text=(
+            "Laboratorio de Psicometría y Análisis de Datos\n"
+            "Facultad de Medicina - UNAM"
+        ),
+        font=("Arial", 10),
+        justify="center",
+        bg="#002B49",
+        fg="white"
+    ).pack(pady=10)
 
     tk.Label(
         frame,
@@ -1214,23 +1231,34 @@ def mostrar_splash():
         font=("Arial", 9, "italic"),
         bg="#002B49",
         fg="white"
-    ).pack()
+    ).pack(pady=10)
 
     splash.update_idletasks()
 
     ancho = splash.winfo_width()
     alto = splash.winfo_height()
+
     x = (splash.winfo_screenwidth() - ancho) // 2
     y = (splash.winfo_screenheight() - alto) // 2
+
     splash.geometry(f"{ancho}x{alto}+{x}+{y}")
 
     splash.after(1800, splash.destroy)
-    splash.mainloop()
+
+    # Esperar sin crear otro mainloop
+    root.wait_window(splash)
 
 
 if __name__ == "__main__":
-    mostrar_splash()
-
     root = tk.Tk()
+    root.withdraw()  # Ocultamos la ventana principal al inicio
+
     app = AnalizadorPsicometria(root)
+
+    mostrar_splash(root)  # Mostramos el splash antes de la ventana principal
+
+    root.deiconify() 
+    root.lift()  # Mostramos la ventana principal después del splash
+    root.focus_force()  # Aseguramos que la ventana principal tenga el foco
+
     root.mainloop()
